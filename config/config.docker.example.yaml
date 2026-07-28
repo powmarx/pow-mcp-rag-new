@@ -1,0 +1,35 @@
+# Example config.yaml for running inside Docker.
+#
+# Copy to config/config.yaml and adjust the project base_paths to the
+# CONTAINER paths (under /projects), not host paths. Mount your host git
+# folder to /projects, e.g.:
+#   -v C:/GIT:/projects:ro
+
+embedding:
+  model: "BAAI/bge-small-en-v1.5"
+
+reranker:
+  enabled: true
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  overfetch_factor: 4
+
+# Relative to server.py's directory -> /app/data (mount this as a volume).
+storage:
+  path: "./data"
+  collection_prefix: "rag"
+  mode: "local"
+
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+  separators:
+    - "\n## "
+    - "\n### "
+    - "\n\n"
+    - "\n"
+
+discovery_ignore:
+ 
+
+# Point base_path at the mounted container paths.
+projects: []

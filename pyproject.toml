@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68,<82", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-mcp"
+version = "1.0.0"
+description = "Local RAG MCP server for API code and documentation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+keywords = ["mcp", "rag", "documentation", "semantic-search"]
+
+dependencies = [
+    "chromadb>=1.5,<2.0",
+    "sentence-transformers>=2.2.2",
+    "mcp[cli]>=1.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "pymupdf>=1.23.0",
+    "openpyxl>=3.1.0",
+]
+
+[project.optional-dependencies]
+# PyTorch CPU — install separately to avoid pulling the CUDA build by default.
+# Users on air-gapped networks should install torch manually first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch = [
+    "torch>=2.0.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "hypothesis>=6.82.0",
+]
+
+[project.scripts]
+rag-mcp = "rag_mcp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Bundle the config templates and metadata inside the wheel itself (not just
+# the sdist via MANIFEST.in) so `pip install`/`uvx` installs can seed a real
+# config.yaml on first run instead of falling back to a minimal stub.
+# Read at runtime via rag_mcp/paths.py and rag_mcp/_server.py.
+# data/docs/*.md bundles docs useful without a repo checkout (tool reference,
+# log indexing guides, CLI reference) so `rag-mcp docs <name>` works —
+# kept in sync with doc/ via scripts/sync_package_data.py.
+[tool.setuptools.package-data]
+"rag_mcp" = ["data/*.yaml", "data/*.json", "data/docs/*.md"]

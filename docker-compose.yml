@@ -1,0 +1,56 @@
+# Phase 1 helper compose file.
+#
+# The MCP *server* is normally launched by the MCP client (Kiro) via
+# `docker run -i`. Compose here is mainly for the one-off indexing job and
+# for smoke-testing the server.
+#
+# Set PROJECTS_DIR to the host folder that holds your source repos, e.g.:
+#   PROJECTS_DIR=D:/GIT docker compose run --rm indexer
+
+services:
+  # One-off: (re)index all configured projects into the shared data volume.
+  # Config is read from the data volume (RAG_CONFIG_PATH=/app/data/config.yaml,
+  # baked into the image), so no repo config mount is needed. Run setup-docker
+  # first to populate it.
+  indexer:
+    build: .
+    image: rag-mcp-new-pip:latest
+    command: ["python", "indexer.py"]
+    volumes:
+      - ${PROJECTS_DIR:-./projects}:/projects:ro
+      - rag-mcp-new-pip-data:/app/data
+
+  # Optional: run the MCP stdio server (for local testing / --list-tools).
+  server:
+    build: .
+    image: rag-mcp-new-pip:latest
+    stdin_open: true
+    tty: false
+    command: ["python", "server.py", "--no-reindex"]
+    volumes:
+      - ${PROJECTS_DIR:-./projects}:/projects:ro
+      - -rag-mcp-new-pip-data:/app/data
+
+  # HTTP server for container-to-container clients (e.g. Odysseus).
+  # Exposes Streamable HTTP MCP on http://localhost:8000/mcp (host) or
+  # http://rag-mcp-http:8000/mcp (from other containers on the same network).
+  #
+  # Start:  docker compose up -d server-http
+  # Add to Odysseus MCP config:  url = http://rag-mcp-http:8000/mcp
+  #   (use host.docker.internal:8000 if Odysseus is on a different Docker network)
+  server-http:
+    build: .
+    image: rag-mcp-new-pip:latest
+    command: ["python", "server.py", "--http", "--no-reindex"]
+    ports:
+      - "8000:8000"
+    environment:
+      - MCP_HTTP_PORT=8000
+      - MCP_HTTP_PATH=${MCP_HTTP_PATH:-/mcp}
+    volumes:
+      - ${PROJECTS_DIR:-./projects}:/projects:ro
+      - rag-mcp-new-pip-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  rag-mcp-new-pip-data:

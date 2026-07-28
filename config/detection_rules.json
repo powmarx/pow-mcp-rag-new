@@ -1,0 +1,176 @@
+{
+  "description": "Auto-detection rules for project structure. Edit this file to add new patterns without touching Python code.",
+  "common": {
+    "documentation": [
+      {
+        "check_dir": ["doc", "docs"],
+        "patterns": [
+          {"glob": "**/*.md", "type": "documentation", "description": "Documentation (Markdown)"},
+          {"glob": "**/*.txt", "type": "documentation", "description": "Documentation (text)"},
+          {"glob": "**/*.pdf", "type": "documentation", "description": "PDF specifications"}
+        ]
+      },
+      {
+        "check_dir": [".kiro/specs"],
+        "patterns": [
+          {"glob": "**/*.md", "type": "documentation", "description": "Kiro feature specs"}
+        ]
+      },
+      {
+        "check_file": ["README.md"],
+        "patterns": [
+          {"glob": "README.md", "type": "documentation", "description": "Project README"}
+        ]
+      }
+    ]
+  },
+  "stacks": {
+    "cpp": {
+      "markers": ["CMakeLists.txt", "*.vcxproj"],
+      "marker_dirs": [ "src"],
+      "rules": [
+        {
+          "check_dir": ["src/include"],
+          "patterns": [
+            {"glob": "src/include/*.h", "type": "header", "description": "Internal headers"}
+          ]
+        },
+        {
+          "check_dir": ["src"],
+          "has_files": ["*.cpp"],
+          "patterns": [
+            {"glob": "src/*.cpp", "type": "source", "description": "Source files"}
+          ]
+        },
+        {
+          "check_dir": ["include"],
+          "patterns": [
+            {"glob": "include/**/*.h", "type": "header", "description": "Public API headers"}
+          ]
+        },
+        {
+          "check_dir": ["component"],
+          "patterns": [
+            {"glob": "component/**/*.h", "type": "header", "description": "Component/submodule headers"},
+            {"glob": "component/**/*.c", "type": "source", "description": "Component C sources"},
+            {"glob": "component/**/*.cpp", "type": "source", "description": "Component C++ sources"}
+          ]
+        },
+        {
+          "check_file": ["CMakeLists.txt"],
+          "patterns": [
+            {"glob": "CMakeLists.txt", "type": "config", "description": "Root CMake configuration"}
+          ]
+        }
+      ],
+      "config_patterns": [
+        {"glob": "**/*.ini", "type": "config", "description": "Configuration files"},
+        {"glob": "**/*.json", "type": "config", "description": "JSON configuration"}
+      ]
+    },
+    "python": {
+      "markers": ["pyproject.toml", "setup.py"],
+      "marker_dirs": [],
+      "rules": [
+        {
+          "always": true,
+          "patterns": [
+            {"glob": "**/*.py", "type": "source", "description": "Python source files"}
+          ]
+        },
+        {
+          "check_file": ["pyproject.toml"],
+          "patterns": [
+            {"glob": "pyproject.toml", "type": "config", "description": "Project configuration"}
+          ]
+        },
+        {
+          "check_file": ["setup.py"],
+          "patterns": [
+            {"glob": "setup.py", "type": "config", "description": "Setup script"}
+          ]
+        },
+        {
+          "check_file": ["setup.cfg"],
+          "patterns": [
+            {"glob": "setup.cfg", "type": "config", "description": "Setup configuration"}
+          ]
+        },
+        {
+          "check_file": ["requirements.txt"],
+          "patterns": [
+            {"glob": "requirements.txt", "type": "config", "description": "Dependencies"}
+          ]
+        }
+      ]
+    },
+    "go": {
+      "markers": ["go.mod"],
+      "marker_dirs": [],
+      "rules": [
+        {
+          "always": true,
+          "patterns": [
+            {"glob": "**/*.go", "type": "source", "description": "Go source files"},
+            {"glob": "go.mod", "type": "config", "description": "Go module definition"}
+          ]
+        },
+        {
+          "check_file": ["go.sum"],
+          "patterns": [
+            {"glob": "go.sum", "type": "config", "description": "Go dependency checksums"}
+          ]
+        }
+      ]
+    },
+    "csharp": {
+      "markers": [],
+      "marker_dirs": [],
+      "rules": [
+        {
+          "has_files_recursive": ["**/*.csproj"],
+          "patterns": [
+            {"glob": "**/*.cs", "type": "source", "description": "C# source files"},
+            {"glob": "**/*.csproj", "type": "config", "description": "C# project files"}
+          ]
+        },
+        {
+          "has_files": ["*.sln"],
+          "patterns": [
+            {"glob": "*.sln", "type": "config", "description": "Solution files"}
+          ]
+        }
+      ]
+    },
+    "node": {
+      "markers": ["package.json"],
+      "marker_dirs": [],
+      "rules": [
+        {
+          "has_files_recursive": ["**/*.ts"],
+          "patterns": [
+            {"glob": "**/*.ts", "type": "source", "description": "TypeScript source files"}
+          ]
+        },
+        {
+          "has_files_recursive": ["**/*.js"],
+          "patterns": [
+            {"glob": "**/*.js", "type": "source", "description": "JavaScript source files"}
+          ]
+        },
+        {
+          "always": true,
+          "patterns": [
+            {"glob": "package.json", "type": "config", "description": "Package configuration"}
+          ]
+        },
+        {
+          "check_file": ["tsconfig.json"],
+          "patterns": [
+            {"glob": "tsconfig.json", "type": "config", "description": "TypeScript configuration"}
+          ]
+        }
+      ]
+    }
+  }
+}

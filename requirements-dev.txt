@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+hypothesis>=6.82.0

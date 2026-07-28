@@ -1,0 +1,51 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local Chroma data (provided via volume at runtime)
+data/
+
+# Machine-specific config (mounted or seeded from template)
+config/config.yaml
+config.yaml
+
+# Git / VCS
+.git/
+.gitignore
+.gitmodules
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Kiro machine-specific artifacts
+.kiro/settings/
+.kiro/hooks/
+
+# Python caches / build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.hypothesis/
+
+# Tests (not needed in the runtime image)
+tests/
+requirements-dev.txt
+
+# Logs and docs
+indexer.log
+doc/
+*.md
+
+# OS cruft
+Thumbs.db
+Desktop.ini
+.DS_Store

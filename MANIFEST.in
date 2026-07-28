@@ -1,0 +1,5 @@
+# Include config files in the source distribution
+# These are read at runtime via paths.py using the installed package location.
+include config/config.template.yaml
+include config/server_info.json
+include config/detection_rules.json

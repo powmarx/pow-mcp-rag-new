@@ -1,0 +1,87 @@
+# RAG MCP Server Configuration
+# This template is copied to config.yaml on first setup.
+# Projects are auto-discovered by setup.bat — no manual editing needed.
+
+# Embedding model configuration
+embedding:
+  model: "BAAI/bge-small-en-v1.5"
+
+# Cross-encoder reranking: reorders the top vector-search candidates using a
+# more accurate (but slower) model that scores the query and document jointly.
+# No reindex required — operates purely at query time on already-retrieved
+# candidates.
+reranker:
+  enabled: true
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  overfetch_factor: 4
+
+# ChromaDB storage (relative to this file)
+storage:
+  path: "./data"
+  collection_prefix: "rag"
+  mode: "local"
+
+# Chunking configuration
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+  separators:
+    - "\n## "
+    - "\n### "
+    - "\n\n"
+    - "\n"
+
+# Discovery ignore patterns (repo name prefixes to skip during auto-discovery)
+discovery_ignore:
+
+# Directories to skip during discovery and indexing (build artifacts, deps, VCS).
+excluded_dirs:
+  - "node_modules"
+  - "venv"
+  - ".venv"
+  - "bin"
+  - "obj"
+  - "build"
+  - "dist"
+  - "__pycache__"
+  - ".vs"
+  - ".git"
+
+# File types indexed by discovery. Each selected root folder gets a recursive
+# "**/*<ext>" source pattern for every extension below that exists under it.
+# type: source | header | documentation
+index_extensions:
+  # C / C++
+  - { ext: ".c",   type: source,        description: "C sources" }
+  - { ext: ".h",   type: header,        description: "C/C++ headers" }
+  - { ext: ".cpp", type: source,        description: "C++ sources" }
+  - { ext: ".cc",  type: source,        description: "C++ sources" }
+  - { ext: ".cxx", type: source,        description: "C++ sources" }
+  - { ext: ".hpp", type: header,        description: "C++ headers" }
+  - { ext: ".hh",  type: header,        description: "C++ headers" }
+  - { ext: ".hxx", type: header,        description: "C++ headers" }
+  # Python
+  - { ext: ".py",  type: source,        description: "Python sources" }
+  # C#
+  - { ext: ".cs",  type: source,        description: "C# sources" }
+  # Go
+  - { ext: ".go",  type: source,        description: "Go sources" }
+  # Kotlin
+  - { ext: ".kt",  type: source,        description: "Kotlin sources" }
+  - { ext: ".kts", type: source,        description: "Kotlin scripts" }
+  # React / JS / TS
+  - { ext: ".js",  type: source,        description: "JavaScript sources" }
+  - { ext: ".jsx", type: source,        description: "React JSX sources" }
+  - { ext: ".ts",  type: source,        description: "TypeScript sources" }
+  - { ext: ".tsx", type: source,        description: "React TSX sources" }
+  # Docs / specs
+  - { ext: ".md",  type: documentation, description: "Markdown docs/specs" }
+  - { ext: ".pdf", type: documentation, description: "PDF docs/specs" }
+  - { ext: ".txt", type: documentation, description: "Text docs/specs" }
+  # Conf / scripting
+  - { ext: ".bat",  type: script,        description: "Installation, setup, copy" }
+  - { ext: ".sh",   type: script,        description: "Installation, setup, copy" }
+  - { ext: ".yaml", type: configuration, description: "COnfiguration for MCP, docker and stuff" }
+
+# Projects are populated automatically by setup.bat (or manually via --add-project)
+projects: []

@@ -1,0 +1,30 @@
+# Always use LF for shell scripts — CRLF breaks Linux containers
+*.sh        text eol=lf
+*.bash      text eol=lf
+
+# Python and config files — LF everywhere
+*.py        text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.json      text eol=lf
+*.toml      text eol=lf
+*.txt       text eol=lf
+*.md        text eol=lf
+*.cfg       text eol=lf
+*.ini       text eol=lf
+
+# Windows batch/PowerShell — keep CRLF on Windows
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Dockerfile — LF
+Dockerfile  text eol=lf
+.dockerignore text eol=lf
+
+# Binary files — no conversion
+*.whl       binary
+*.tar.gz    binary
+*.pdf       binary
+*.png       binary
+*.jpg       binary
