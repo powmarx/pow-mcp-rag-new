@@ -2,6 +2,8 @@
 
 A local RAG (Retrieval-Augmented Generation) MCP server for project documentation and code.
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 ## Overview
 
 This project provides a Model Context Protocol (MCP) server that indexes project documentation
@@ -10,16 +12,48 @@ semantic search tools to Kiro or any MCP-compatible client.
 
 Supports multiple tech stacks: C/C++, Python, Go, C#, Node.js/TypeScript.
 
+**Distribution name:** `pow-rag-mcp` (unrelated to `rag-mcp` or `rag-mcp-server` packages).
+
+**Minimum Python version:** `3.11` (matches `requires-python = ">=3.11"` in `pyproject.toml`).
+
 Three deployment modes:
 - **Docker** (Phase 1) — zero local Python needed; server runs in a container
-- **Local PyPI + uvx** (Phase 2a) — install `rag-mcp` via `uvx` from a local package index; no persistent venv, easiest to keep updated. Stepping stone toward a hosted index (S3/CodeArtifact).
-- **pip install** (Phase 2b) — install `rag-mcp` directly into a Python environment (venv, or a hosted S3/CodeArtifact index)
+- **PyPI (recommended for new users)** (Phase 2a) — install via `uvx --from`, `uv tool install`, or `pip install` from PyPI; no repo checkout or local index needed
+- **Local PyPI + uvx** (Phase 2b) — install `rag-mcp` via `uvx` from a local package index; no persistent venv, easiest to keep updated. Stepping stone toward a hosted index (S3/CodeArtifact).
+- **pip install** (Phase 2c) — install `rag-mcp` directly into a Python environment (venv, or a hosted S3/CodeArtifact index)
 
 ---
 
+## License
+
+This project is licensed under the Apache 2.0 License — see the [LICENSE](LICENSE) file for details.
+
 ## Quick Start
 
-### Local PyPI + uvx (recommended for pip-mode)
+### PyPI (recommended for new users)
+
+Install from PyPI using your preferred method:
+
+**Option 1: One-off execution with `uvx`**
+```bash
+uvx --from pow-rag-mcp rag-mcp serve
+```
+
+**Option 2: Persistent install with `uv tool install`**
+```bash
+uv tool install pow-rag-mcp
+```
+
+**Option 3: Traditional `pip`**
+```bash
+pip install pow-rag-mcp
+```
+
+All three methods fetch `pow-rag-mcp` from PyPI directly — no repository checkout or local package index is required.
+
+See **[doc/PIP_INSTALL_GUIDE.md](doc/PIP_INSTALL_GUIDE.md)** for full details (config seeding, bundled docs, upgrades, and migrating to a hosted index).
+
+### Local PyPI + uvx (recommended for development/publishing workflows)
 
 ```bash
 cd <your-checkout>/pow-mcp-rag-new
