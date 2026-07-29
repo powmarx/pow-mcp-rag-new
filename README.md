@@ -12,7 +12,7 @@ Supports multiple tech stacks: C/C++, Python, Go, C#, Node.js/TypeScript.
 
 Three deployment modes:
 - **Docker** (Phase 1) — zero local Python needed; server runs in a container
-- **Local PyPI + uvx** (Phase 2a) — install `rag-mcp` via `uvx` from a local package index; no persistent venv, easiest to keep updated. Stepping stone toward a hosted index (S3/CodeArtifact).
+- **Local PyPI + uvx** (Phase 2a) — install `rag-mcp` via `uvx` from a local package index; no persistent venv, easiest to keep updated. Stepping stone toward a hosted index.
 - **pip install** (Phase 2b) — install `rag-mcp` directly into a Python environment (venv, or a hosted S3/CodeArtifact index)
 
 ---
