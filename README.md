@@ -20,7 +20,7 @@ Three deployment modes:
 - **Docker** (Phase 1) — zero local Python needed; server runs in a container
 - **PyPI (recommended for new users)** (Phase 2a) — install via `uvx --from`, `uv tool install`, or `pip install` from PyPI; no repo checkout or local index needed
 - **Local PyPI + uvx** (Phase 2b) — install `rag-mcp` via `uvx` from a local package index; no persistent venv, easiest to keep updated. Stepping stone toward a hosted index (S3/CodeArtifact).
-- **pip install** (Phase 2c) — install `rag-mcp` directly into a Python environment (venv, or a hosted S3/CodeArtifact index)
+- **pip install** (Phase 2c) — install `rag-mcp` directly into a Python environment
 
 ---
 
