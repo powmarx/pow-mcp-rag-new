@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pow-rag-mcp"
-version = "1.0.0"
-description = "Local RAG MCP server for API code and documentation"
+version = "1.1.0"
+description = "Local RAG MCP server for code and documentation"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
