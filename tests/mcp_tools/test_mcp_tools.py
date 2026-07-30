@@ -263,9 +263,17 @@ def test_search_hex_pattern_empty():
     assert "Error" in result
 
 
-def test_search_hex_pattern_not_found():
-    """search_hex_pattern with non-existent pattern should return no matches."""
-    result = search_hex_pattern("ZZZZZZZZ")
+def test_search_hex_pattern_not_found(two_indexed_projects):
+    """search_hex_pattern with non-existent pattern should return no matches.
+
+    Scoped to a project from the fixture rather than searching all collections:
+    on a fresh checkout with no other projects indexed, an unscoped search has
+    zero collections to search at all and returns "No indexed collections
+    found." instead of "No matches" — this isn't a "no environment dependency"
+    case after all, it just needs *some* indexed collection to exist.
+    """
+    proj = two_indexed_projects
+    result = search_hex_pattern("ZZZZZZZZ", project=proj.name_a)
     assert "No matches" in result
 
 
