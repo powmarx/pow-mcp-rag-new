@@ -404,7 +404,7 @@ docker compose run --rm indexer python indexer.py --project <NAME>
 
 | Language / Stack | Detection signal |
 |---|---|
-| C/C++ | CMakeLists.txt, src/, include/, component/, C-Fontes/ |
+| C/C++ | CMakeLists.txt, src/, include/, component/ |
 | Python | `*.py`, pyproject.toml, setup.py |
 | Go | go.mod |
 | C# | `*.csproj`, `*.sln` |

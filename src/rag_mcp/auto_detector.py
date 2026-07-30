@@ -100,7 +100,7 @@ class ProjectAutoDetector:
             if not self._rule_matches(path, rule):
                 continue
 
-            # Handle direct vs nested file check (C-Fontes pattern)
+            # Handle direct vs nested file check
             if "has_direct_files" in rule:
                 check_dir = rule.get("check_dir", [None])[0]
                 dir_path = path / check_dir if check_dir else path
