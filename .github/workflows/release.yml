@@ -121,16 +121,21 @@ jobs:
             --extra-index-url https://pypi.org/simple/ \
             pow-rag-mcp
 
-      - name: Verify rag-mcp config succeeds with no stderr output
+      - name: Verify rag-mcp config succeeds with no unexpected stderr output
         run: |
           set +e
           rag-mcp config >stdout.log 2>stderr.log
           exit_code=$?
           set -e
 
-          if [ -s stderr.log ]; then
-            echo "::error::rag-mcp config produced stderr output:"
-            cat stderr.log
+          # rag-mcp logs its own informational messages to stderr with a
+          # "[tag]" prefix (e.g. "[config] Created config at ..." on first
+          # run) — this is documented, expected behavior, not an error.
+          # Only unrecognized stderr content should fail this check.
+          unexpected=$(grep -v '^\[config\]' stderr.log || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::rag-mcp config produced unexpected stderr output:"
+            echo "$unexpected"
             exit 1
           fi
 
@@ -176,9 +181,12 @@ jobs:
           exit_code=$?
           set -e
 
-          if [ -s stderr-pip.log ]; then
-            echo "::error::rag-mcp config produced stderr output:"
-            cat stderr-pip.log
+          # See the comment in verify-testpypi-install: "[config]"-prefixed
+          # stderr lines are expected first-run logging, not errors.
+          unexpected=$(grep -v '^\[config\]' stderr-pip.log || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::rag-mcp config produced unexpected stderr output:"
+            echo "$unexpected"
             exit 1
           fi
 
@@ -194,9 +202,12 @@ jobs:
           exit_code=$?
           set -e
 
-          if [ -s stderr-uvx.log ]; then
-            echo "::error::uvx rag-mcp config produced stderr output:"
-            cat stderr-uvx.log
+          # See the comment in verify-testpypi-install: "[config]"-prefixed
+          # stderr lines are expected first-run logging, not errors.
+          unexpected=$(grep -v '^\[config\]' stderr-uvx.log || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::uvx rag-mcp config produced unexpected stderr output:"
+            echo "$unexpected"
             exit 1
           fi
 
