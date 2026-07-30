@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "chromadb>=1.5,<2.0",
     "sentence-transformers>=2.2.2",
-    "mcp[cli]>=1.0.0",
+    "mcp[cli]>=1.0.0,<2.0.0",
     "pyyaml>=6.0",
     "rich>=13.0.0",
     "pymupdf>=1.23.0",
@@ -39,6 +39,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "hypothesis>=6.82.0",
+    "pytest-randomly==4.1.0",
 ]
 
 [project.scripts]

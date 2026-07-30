@@ -121,7 +121,6 @@ You don't call these tools directly — just ask questions naturally and the AI 
 
 **Example prompts:**
 - "Show me the full RejectRerouter.h file from the project A project"
-- "Get the document C-Fontes/BLDeviceXRV2.h from my-project-a"
 
 ---
 

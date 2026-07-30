@@ -6,6 +6,7 @@
 
 # Local PyPI index package storage (setup-pypi.bat output; rebuilt from dist/)
 /packages/
+*lock
 
 # Machine-specific config (generated from template by setup.bat / setup-docker.*)
 config/config.yaml
@@ -53,10 +54,8 @@ Desktop.ini
 .DS_Store
 
 # specs
-doc/specifications/
 .kiro/
 
 # pytest
 .pytest_cache/
-tests/
 projects/

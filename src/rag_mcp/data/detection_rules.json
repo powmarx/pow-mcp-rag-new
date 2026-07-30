@@ -27,32 +27,8 @@
   "stacks": {
     "cpp": {
       "markers": ["CMakeLists.txt", "*.vcxproj"],
-      "marker_dirs": ["C-Fontes", "src"],
+      "marker_dirs": ["src"],
       "rules": [
-        {
-          "check_dir": ["C-Fontes"],
-          "has_direct_files": ["*.h", "*.cpp"],
-          "patterns_if_direct": [
-            {"glob": "C-Fontes/*.h", "type": "header", "description": "Header files"},
-            {"glob": "C-Fontes/*.cpp", "type": "source", "description": "Source files"}
-          ],
-          "patterns_if_nested": [
-            {"glob": "C-Fontes/**/*.h", "type": "header", "description": "Header files"},
-            {"glob": "C-Fontes/**/*.cpp", "type": "source", "description": "Source files"}
-          ]
-        },
-        {
-          "check_dir": ["C-Fontes/packets"],
-          "patterns": [
-            {"glob": "C-Fontes/packets/*.h", "type": "header", "description": "Packet structures"}
-          ]
-        },
-        {
-          "check_dir": ["C-Fontes/commands"],
-          "patterns": [
-            {"glob": "C-Fontes/commands/*.h", "type": "header", "description": "Command structures"}
-          ]
-        },
         {
           "check_dir": ["src/include"],
           "patterns": [
