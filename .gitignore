@@ -6,7 +6,6 @@
 
 # Local PyPI index package storage (setup-pypi.bat output; rebuilt from dist/)
 /packages/
-*lock
 
 # Machine-specific config (generated from template by setup.bat / setup-docker.*)
 config/config.yaml
