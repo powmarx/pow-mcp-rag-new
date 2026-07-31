@@ -155,7 +155,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Write/update the rag-mcp-new-pip-mcp MCP server entry — no repo checkout required.",
     )
-    parser.add_argument("--index-url", required=True, help="PyPI-compatible index URL (local pypiserver or hosted S3/CodeArtifact)")
+    parser.add_argument("--index-url", required=True, help="PyPI-compatible index URL (local pypiserver or PyPI)")
     parser.add_argument("--package", default=DEFAULT_PACKAGE, help=f"Package name to install/run (default: {DEFAULT_PACKAGE})")
     parser.add_argument("--server-name", default=DEFAULT_SERVER_NAME, help=f"MCP server key in mcp.json (default: {DEFAULT_SERVER_NAME})")
     parser.add_argument("--stable", action="store_true", help="Use a persistent 'uv tool install' exe instead of 'uvx --from'")

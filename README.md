@@ -19,7 +19,7 @@ Supports multiple tech stacks: C/C++, Python, Go, C#, Node.js/TypeScript.
 Three deployment modes:
 - **Docker** (Phase 1) — zero local Python needed; server runs in a container
 - **PyPI (recommended for new users)** (Phase 2a) — install via `uvx --from`, `uv tool install`, or `pip install` from PyPI; no repo checkout or local index needed
-- **Local PyPI + uvx** (Phase 2b) — install `rag-mcp` via `uvx` from a local package index; no persistent venv, easiest to keep updated. Stepping stone toward a hosted index (S3/CodeArtifact).
+- **Local PyPI + uvx** (Phase 2b) — install `rag-mcp` via `uvx` from a local package index; no persistent venv, easiest to keep updated. Stepping stone toward a hosted index.
 - **pip install** (Phase 2c) — install `rag-mcp` directly into a Python environment
 
 ---
@@ -67,7 +67,7 @@ No Docker, no persistent venv to manage. See [TROUBLESHOOTING.md](doc/TROUBLESHO
 this is preferred over plain `uvx --from` on Windows with this package's large dependency tree.
 
 **Full guide:** [doc/PIP_INSTALL_GUIDE.md](doc/PIP_INSTALL_GUIDE.md#local-pypi-uvx-mode)
-(keep the local index running, rebuild/republish after code changes, migrating to S3 later).
+
 
 ### Docker (alternative)
 
@@ -113,7 +113,6 @@ Restart Kiro — the RAG is ready. **Full guide:** [doc/DOCKER_GUIDE.md](doc/DOC
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install rag-mcp --extra-index-url https://<your-s3-bucket>.s3.<region>.amazonaws.com/
 rag-mcp config   # seeds config on first run, shows resolved paths
 rag-mcp index
 rag-mcp serve
@@ -133,7 +132,7 @@ rag-mcp serve
 | Guide | Covers | Bundled in package? |
 |---|---|---|
 | [doc/DOCKER_GUIDE.md](doc/DOCKER_GUIDE.md) | Full Docker setup, adding/removing projects, HTTP server, complete CLI reference (Docker mode) | No — repo only |
-| [doc/PIP_INSTALL_GUIDE.md](doc/PIP_INSTALL_GUIDE.md) | Local PyPI + uvx setup, pip installation, config seeding, building/publishing the wheel, migrating to S3/CodeArtifact | No — repo only |
+| [doc/PIP_INSTALL_GUIDE.md](doc/PIP_INSTALL_GUIDE.md) | Local PyPI + uvx setup, pip installation, config seeding, building/publishing the wheel| No — repo only |
 | [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | How indexing/retrieval works, embedding model, PDF handling, file structure | No — repo only |
 | [doc/CLI_REFERENCE.md](doc/CLI_REFERENCE.md) | Full `rag-mcp` CLI reference: `serve`/`index`/`config`/`docs`, all flags and env vars | **Yes** — `rag-mcp docs cli` |
 | [doc/TOOLS_GUIDE.md](doc/TOOLS_GUIDE.md) | Full MCP tool reference (21 tools) with usage examples | **Yes** — `rag-mcp docs tools` |

@@ -6,10 +6,7 @@ REM mcp.json / .vscode/mcp.json to launch the server via `uvx` — no Docker,
 REM no local venv needed on the machine that connects to Kiro (uvx manages
 REM its own isolated environment and caches it).
 REM
-REM This is a stepping stone: the local index (http://localhost:8080) is
-REM meant to be swapped later for a hosted index (S3 + static index, or
-REM AWS CodeArtifact) by changing only --index-url below and in mcp.json.
-REM
+REM 
 REM Requires: uv / uvx (https://docs.astral.sh/uv/getting-started/installation/)
 REM
 REM Usage:
@@ -103,9 +100,6 @@ echo.
 echo   Local PyPI index will serve from: %~dp0packages
 echo   Start it manually if not already running:
 echo     .venv\Scripts\python.exe -m pypiserver run -p %PORT% packages --disable-fallback
-echo.
-echo   (Next phase: swap %INDEX_URL% for an S3-hosted or CodeArtifact index —
-echo    only --index-url changes, uvx and mcp.json setup stay the same.)
 echo.
 
 echo [6/7] Installing as a persistent uv tool ^(avoids per-launch re-resolution^)...

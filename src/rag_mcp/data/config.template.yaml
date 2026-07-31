@@ -33,8 +33,6 @@ chunking:
 
 # Discovery ignore patterns (repo name prefixes to skip during auto-discovery)
 discovery_ignore:
-  - "tools-"
-  - "components-"
 
 # Directories to skip during discovery and indexing (build artifacts, deps, VCS).
 excluded_dirs:

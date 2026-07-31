@@ -234,13 +234,13 @@ A typical device log configuration defines a set of prioritized patterns like th
 
 | Priority | Name | Event Type | What It Catches |
 |---|---|---|---|
-| 10 | `device_sta_buffer` | command | STA lines with `[CMD_*] WDATA/RDATA` — actual serial protocol data |
-| 20 | `device_cmd_begin` | command | `Manager\|executeCMD: Begin` — API command start |
-| 21 | `device_cmd_end` | response | `Manager\|executeCMD: End` — API command completion with return code |
-| 30 | `device_sndrecv_call` | command | `SndRecvData: call(...)` — serial dispatch to hardware |
-| 35 | `device_sndrecv_error` | error | `SndRecvData: last_error = XXXXXXXX` — device error code |
+| 10 | `device_sta_buffer` | command | STA lines with `[COMA+MAND*] ` — actual serial protocol data |
+| 20 | `device_command_begin` | command | `Manager\|executeCMD: Begin` — API command start |
+| 21 | `device_command_end` | response | `Manager\|executeCMD: End` — API command completion with return code |
+| 30 | `device_message_call` | command | `SndRecvData: call(...)` — serial dispatch to hardware |
+| 35 | `device_message_error` | error | `SndRecvData: last_error = XXXXXXXX` — device error code |
 | 40 | `device_err_hex_code` | error | ERR lines with hex codes (`cmd_cc_ret=`, `error_code=`) |
-| 45 | `device_err_cmd_error` | error | `executeCMD: ERROR - [N]` — API-level error |
+| 45 | `device_err_command_error` | error | `executeCMD: ERROR - [N]` — API-level error |
 | 50 | `device_err_generic` | error | Any remaining ERR lines |
 | 60 | `device_wrn` | warning | WRN lines |
 | 70 | `device_ini_fim` | state_change | INI/FIM function begin/end markers |

@@ -233,25 +233,6 @@ uv tool install --extra-index-url http://localhost:8080/simple/ --force pow-rag-
 > unambiguous — reusing the same version number with different content can serve stale cached
 > wheels in some edge cases, for both `uv tool install` and `uvx --from`.
 
-#### Migrating to a hosted index (S3 / CodeArtifact) later
-
-Only the index URL changes — the wheel format, build process, and `uvx` command stay identical:
-
-```bash
-# Local (today):
-uvx --extra-index-url http://localhost:8080/simple/ --from pow-rag-mcp rag-mcp serve
-
-# S3-hosted static index (later):
-uvx --extra-index-url https://<bucket>.s3.<region>.amazonaws.com/simple/ --from pow-rag-mcp rag-mcp serve
-
-# AWS CodeArtifact (managed, alternative to S3):
-uvx --extra-index-url https://<domain>-<account>.d.codeartifact.<region>.amazonaws.com/pypi/<repo>/simple/ --from pow-rag-mcp rag-mcp serve
-```
-
-For an S3 static index, generate the index HTML with a tool like [`dumb-pypi`](https://github.com/chriskuehl/dumb-pypi)
-and `aws s3 sync` the `packages/` + generated index pages to the bucket. `setup_mcp_config.py --uvx`
-already accepts any `--index-url`, so re-running it with the new URL is all that's needed to
-update `mcp.json` / `.vscode/mcp.json`.
 
 ### Configuring a remote machine (no repo checkout)
 
@@ -297,12 +278,6 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install pow-rag-mcp --extra-index-url http://localhost:8080/simple/
 ```
 
-#### Install from a hosted S3 index (once published)
-
-```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install pow-rag-mcp --extra-index-url https://<your-s3-bucket>.s3.<region>.amazonaws.com/
-```
 
 ### First run — config seeding
 
@@ -486,23 +461,6 @@ python -m build --wheel --no-isolation
 
 `setup-pypi.bat` runs both steps automatically.
 
-### Publish to S3 (next phase)
-
-```bash
-# Upload wheel to S3 (acts as a simple find-links PyPI index)
-aws s3 cp dist/ s3://<your-bucket>/rag-mcp/ --recursive
-
-# Users install with:
-pip install pow-rag-mcp --extra-index-url https://<bucket>.s3.<region>.amazonaws.com/
-# or, with uvx:
-uvx --extra-index-url https://<bucket>.s3.<region>.amazonaws.com/ --from pow-rag-mcp rag-mcp serve
-```
-
-For a proper PEP 503 "simple" index (required for correct version resolution beyond a single
-wheel), generate index pages with [`dumb-pypi`](https://github.com/chriskuehl/dumb-pypi) before
-syncing to S3, rather than relying on S3's raw directory listing.
-
----
 
 ## Local release dry run
 

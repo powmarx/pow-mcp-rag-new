@@ -95,20 +95,51 @@ def _add_project_sync(name: str, path: str) -> str:
         def print(self, *args, **kwargs):
             pass
 
-    file_reader = FileReader()
-    chunker = Chunker(_ctx.config.chunking)
-    pipeline = IndexingPipeline(
-        config=_ctx.config,
-        file_reader=file_reader,
-        chunker=chunker,
-        embedding_gen=_ctx.embedding_gen,
-        store=_ctx.store,
-        console=SilentConsole(),
-    )
+    # The embedding model is lazy-loaded in a background thread on server start;
+    # block until it is ready or encode() below raises "Model not loaded".
+    try:
+        _ctx.ensure_model_loaded()
 
-    # PDFs are converted to Markdown automatically during indexing (into the
-    # configured PDF cache under storage.path), so no separate step is needed.
-    chunks = pipeline.index_project(new_project)
+        file_reader = FileReader()
+        chunker = Chunker(_ctx.config.chunking)
+        pipeline = IndexingPipeline(
+            config=_ctx.config,
+            file_reader=file_reader,
+            chunker=chunker,
+            embedding_gen=_ctx.embedding_gen,
+            store=_ctx.store,
+            console=SilentConsole(),
+        )
+
+        # PDFs are converted to Markdown automatically during indexing (into the
+        # configured PDF cache under storage.path), so no separate step is needed.
+        chunks = pipeline.index_project(new_project)
+    except Exception as e:
+        # Roll back the config entry so a failed add doesn't leave a phantom
+        # project in config.yaml with no collection behind it.
+        if new_project in _ctx.config.projects:
+            _ctx.config.projects.remove(new_project)
+        try:
+            _ctx.loader.save(_ctx.config)
+        except Exception as save_error:
+            return (
+                f"Error: Indexing failed for project '{name}': {e}\n"
+                f"  Additionally, rolling back config.yaml failed: {save_error}"
+            )
+        return (
+            f"Error: Indexing failed for project '{name}': {e}\n"
+            f"  Config rolled back — project was not added."
+        )
+
+    if chunks == 0:
+        log_tool_call("add_project", {"name": name, "path": path}, start_time, 0)
+        return (
+            f"Project '{name}' added to config but 0 chunks were indexed.\n"
+            f"Path: {path}\n"
+            f"Patterns detected: {len(sources)}\n"
+            f"  The project was kept in config.yaml (patterns may match files later).\n"
+            f"  Re-run indexing once matching content exists."
+        )
 
     output_parts = [
         f"Project '{name}' added and indexed successfully!\n",

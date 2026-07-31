@@ -133,7 +133,7 @@ def _uvx_main():
     parser = argparse.ArgumentParser(prog="setup_mcp_config.py --uvx")
     parser.add_argument("--uvx", action="store_true")
     parser.add_argument("--server-name", default=None, help="MCP server key in mcp.json (default: from server_info.json)")
-    parser.add_argument("--index-url", required=True, help="PyPI-compatible index URL (local pypiserver or S3-hosted index)")
+    parser.add_argument("--index-url", required=True, help="PyPI-compatible index URL (local pypiserver or PyPI)")
     parser.add_argument("--package", default="rag-mcp-new-pip-mcp", help="Package name to install/run via uvx")
     parser.add_argument("--out", default=None, help="mcp.json path (default: ~/.kiro/settings/mcp.json)")
     parser.add_argument("--vscode", action="store_true", help="Also write .vscode/mcp.json in this repo (VS Code / VS 2026)")
