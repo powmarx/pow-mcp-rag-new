@@ -198,7 +198,10 @@ jobs:
       - name: "Check (b): uvx --from pow-rag-mcp rag-mcp config"
         run: |
           set +e
-          uvx --from pow-rag-mcp rag-mcp config >stdout-uvx.log 2>stderr-uvx.log
+          # -q suppresses uv's own resolver/download progress lines (which
+          # otherwise land on stderr and vary run to run with package sizes),
+          # so this stderr capture reflects only rag-mcp's own output.
+          uvx -q --from pow-rag-mcp rag-mcp config >stdout-uvx.log 2>stderr-uvx.log
           exit_code=$?
           set -e
 
