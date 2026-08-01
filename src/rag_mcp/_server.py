@@ -42,7 +42,17 @@ def main() -> None:
 
 
 def _run_inline() -> None:
-    """Inline server startup — used when server.py is not found on disk."""
+    """Inline server startup — used when server.py is not found on disk.
+
+    Mirrors server.py's startup sequencing exactly (see that file's
+    "Startup" section). In particular, the embedding model MUST be loaded
+    before mcp.run() starts the event loop: loading it lazily from inside a
+    tool call (via anyio.to_thread.run_sync) is the "httpx/anyio deadlock"
+    server.py's comments warn about — the first tool call can hang
+    indefinitely instead of just being slow. This bit the installed
+    (pip/uvx) package specifically because this fallback path used to skip
+    the preload step that only existed in server.py.
+    """
     import json
     import time
     import threading
@@ -77,6 +87,35 @@ def _run_inline() -> None:
     embedding_gen = EmbeddingGenerator(config.embedding.model, config.embedding.query_instruction)
     reranker = Reranker(config.reranker.model) if config.reranker.enabled else None
 
+    # Lock to prevent concurrent embedding model access/loading (model is not
+    # thread-safe, and without this two first-time tool calls can race to
+    # both call embedding_gen.load() on separate anyio worker threads).
+    _embedding_lock = threading.Lock()
+    _reranker_lock = threading.Lock()
+
+    def _ensure_model_loaded_inline():
+        if embedding_gen.model is not None:
+            return
+        with _embedding_lock:
+            if embedding_gen.model is None:
+                embedding_gen.load()
+
+    def _ensure_reranker_loaded_inline():
+        if reranker is None or reranker.model is not None:
+            return
+        with _reranker_lock:
+            if reranker.model is None:
+                reranker.load()
+
+    # Pre-load the embedding model before mcp.run() starts the event loop
+    # (see docstring above). No auto-reindex path exists in this fallback,
+    # so this mirrors server.py's synchronous --no-reindex preload branch
+    # unconditionally.
+    print("[startup] Loading embedding model (required before event loop)...", file=sys.stderr)
+    _load_start = time.time()
+    _ensure_model_loaded_inline()
+    print(f"[startup] Model ready ({(time.time() - _load_start) * 1000:.0f}ms)", file=sys.stderr)
+
     # Server info: prefer bundled package data (installed wheel/sdist), fall
     # back to the repo's config/ folder (editable install / repo checkout).
     here = Path(__file__).parent
@@ -103,21 +142,17 @@ def _run_inline() -> None:
     _reindex_in_progress = False
     _indexing_cancelled = False
 
-    def _ensure_reranker_loaded():
-        if reranker is not None and reranker.model is None:
-            reranker.load()
-
     ctx = ToolContext(
         config=config,
         loader=loader,
         store=store,
         embedding_gen=embedding_gen,
-        ensure_model_loaded=lambda: embedding_gen.load() if embedding_gen.model is None else None,
+        ensure_model_loaded=_ensure_model_loaded_inline,
         reindex_in_progress=lambda: _reindex_in_progress,
         indexing_cancelled=lambda: _indexing_cancelled,
         set_indexing_cancelled=lambda v: None,
         reranker=reranker,
-        ensure_reranker_loaded=_ensure_reranker_loaded,
+        ensure_reranker_loaded=_ensure_reranker_loaded_inline,
     )
     register_all_tools(mcp, ctx)
 
