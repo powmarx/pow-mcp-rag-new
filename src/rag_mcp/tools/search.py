@@ -405,7 +405,7 @@ def find_variable(variable_name: str, project: str = "") -> str:
     Uses text matching to find exact occurrences across indexed files.
 
     Args:
-        variable_name: Name of the variable/constant to find (e.g., "BRU_CASHUNIT_STATUS_FULL", "REROUTE_TARGET_URJB1_INDEX")
+        variable_name: Name of the variable/constant to find 
         project: Optional project name filter
 
     Returns:

@@ -104,8 +104,7 @@ class LogPipeline:
 
         If the content matches the dmp_fallback_detect pattern (configured in
         log_settings), the standard parser is used. If no match is found
-        (old-format logs), a fallback parser is created that also includes
-        DMP/DBX/DBG SndRecvData lines so that hex data can still be extracted.
+        (old-format logs), a fallback parser is created that also includes.
 
         Args:
             content: The log content to analyze.

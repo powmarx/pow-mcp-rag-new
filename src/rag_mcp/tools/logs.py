@@ -1,4 +1,4 @@
-"""Log tools: search_logs, cancel_indexing, index_log_file."""
+"""Log tools: search_logs, index_log_file."""
 
 import sys
 import time
@@ -21,7 +21,6 @@ def register(mcp, ctx: ToolContext) -> None:
     _ctx = ctx
 
     mcp.tool()(search_logs)
-    mcp.tool()(cancel_indexing)
     mcp.tool()(index_log_file)
 
 
@@ -392,28 +391,6 @@ def _search_logs_sync(
     )
 
     return _format_log_results(all_results)
-
-
-def cancel_indexing() -> str:
-    """
-    Cancel any in-progress background reindex operation.
-    Chunks already stored are preserved. You can resume later by calling index_log_file again.
-
-    NOTE: This does NOT stop a running index_log_file call (MCP tools are synchronous).
-    To stop index_log_file, restart the MCP server. Stored chunks are preserved.
-
-    Returns:
-        Confirmation that cancellation was requested.
-    """
-    _ctx.set_indexing_cancelled(True)
-    print("[cancel_indexing] Cancellation requested", file=sys.stderr)
-    return (
-        "Cancellation requested.\n\n"
-        "• Background reindex: will stop after current file.\n"
-        "• index_log_file: NOT affected (MCP tools are synchronous).\n"
-        "  To stop it, restart the MCP server from Kiro's MCP panel.\n\n"
-        "Already-stored chunks are preserved (deterministic IDs)."
-    )
 
 
 async def index_log_file(
