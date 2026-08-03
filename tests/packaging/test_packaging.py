@@ -243,3 +243,15 @@ def test_cli_script_is_installed():
     found = any(p.exists() for p in candidates)
     assert found, f"rag-mcp script not found in {scripts_dir}"
     print(f"  PASS: CLI script found in {scripts_dir}")
+
+def test_prepare_env_resolves_paths(monkeypatch, tmp_path):
+    """_prepare_env() must resolve config/data paths without NameError —
+    regression test for resolve_config_path/resolve_data_path import
+    being scoped to main() instead of available to _prepare_env()."""
+    monkeypatch.setenv("RAG_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.setenv("RAG_DATA_PATH", str(tmp_path / "data"))
+    (tmp_path / "config.yaml").write_text("storage:\n  path: ''\n")
+
+    from rag_mcp import cli
+    cfg_path = cli._prepare_env()
+    assert cfg_path.exists()

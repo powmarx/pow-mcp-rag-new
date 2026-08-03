@@ -157,9 +157,11 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-            
+
 def _prepare_env() -> Path:
     """Resolve config/data paths, ensure config has data path set, and export RAG_CONFIG_PATH."""
+    from rag_mcp.paths import resolve_config_path, resolve_data_path
+
     cfg_path = resolve_config_path()
     data_path = resolve_data_path()
     _ensure_data_path_in_config(cfg_path, data_path)
