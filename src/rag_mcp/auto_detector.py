@@ -19,8 +19,27 @@ class DetectedSource:
     description: str
 
 
-# Default rules file location (relative to this module's parent package)
-_DEFAULT_RULES_PATH = Path(__file__).parent.parent.parent / "config" / "detection_rules.json"
+def _resolve_default_rules_path() -> Path:
+    """
+    Locate detection_rules.json: prefer bundled package data (installed
+    wheel/sdist via pip/uvx), fall back to the repo's config/ folder
+    (editable install / repo checkout). Mirrors the resolution used for
+    server_info.json in _server.py.
+    """
+    here = Path(__file__).parent
+    candidates = [
+        here / "data" / "detection_rules.json",
+        here.parent.parent.parent / "config" / "detection_rules.json",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    # Neither found — return the packaged-data path so the missing-file
+    # error message points somewhere meaningful instead of silently
+    # falling back to empty rules.
+    return candidates[0]
+
+_DEFAULT_RULES_PATH = _resolve_default_rules_path()
 
 
 class ProjectAutoDetector:
@@ -30,9 +49,16 @@ class ProjectAutoDetector:
         self.rules_path = rules_path or _DEFAULT_RULES_PATH
         self.rules = self._load_rules()
 
+   
     def _load_rules(self) -> dict:
         """Load detection rules from JSON file."""
         if not self.rules_path.exists():
+            import sys
+            print(
+                f"[auto_detector] WARNING: detection_rules.json not found at "
+                f"{self.rules_path} — auto-detect will find nothing.",
+                file=sys.stderr,
+            )
             return {"common": {}, "stacks": {}}
         with open(self.rules_path, "r", encoding="utf-8") as f:
             return json.load(f)
