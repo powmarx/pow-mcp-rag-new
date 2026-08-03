@@ -77,3 +77,44 @@ tag push.
 
 To re-run without creating a new tag (e.g. after fixing a CI-only issue),
 use `workflow_dispatch` from the Actions tab instead of pushing a new tag.
+
+## 5. Picking up a new version via `uvx`
+
+`uvx --from pow-rag-mcp rag-mcp ...` re-resolves against PyPI on each
+invocation, but `uv` caches downloaded distributions — after a new release,
+a stale cached build can still get used. Note the package/command name
+split: the PyPI distribution is `pow-rag-mcp`, but the installed console
+script is `rag-mcp`, so `--from` is required (`uvx pow-rag-mcp ...` alone
+will fail with a "not found in the package registry" resolution error).
+
+Force a fresh resolve/download, ignoring the cache:
+
+```powershell
+uvx --refresh --from pow-rag-mcp rag-mcp serve --no-reindex
+```
+
+Or scope the refresh to just this package instead of everything cached:
+
+```powershell
+uvx --refresh-package pow-rag-mcp --from pow-rag-mcp rag-mcp serve --no-reindex
+```
+
+To confirm a specific version is what actually gets resolved (useful right
+after a release to verify it landed):
+
+```powershell
+uvx --from pow-rag-mcp==X.Y.Z rag-mcp config
+```
+
+To clear the cached distribution entirely for a clean slate:
+
+```powershell
+uv cache clean pow-rag-mcp
+```
+
+In most cases none of this is needed — `uvx` checks PyPI's index fresh each
+time it resolves, so simply restarting the MCP connection (e.g. in Kiro's
+`mcp.json`) after a new PyPI release picks up the latest version. The
+`--refresh`/`--refresh-package` flags are only needed for edge cases, such
+as verifying immediately after a Test PyPI + PyPI publish in quick
+succession.

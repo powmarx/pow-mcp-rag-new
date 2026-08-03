@@ -9,12 +9,12 @@ You don't call these tools directly — just ask questions naturally and the AI 
 | # | Tool | Purpose | Example prompt |
 |---|------|---------|----------------|
 | 1 | [`search_docs`](#1-search_docs--general-semantic-search) | General semantic search | "How does the dispense command work?" |
-| 2 | [`search_specs`](#2-search_specs--documentation-only) | Search only documentation/specs | "What does the spec say about URJB1?" |
+| 2 | [`search_specs`](#2-search_specs--documentation-only) | Search only documentation/specs | "What does the spec say about crypto steps?" |
 | 3 | [`search_code`](#3-search_code--source-code-only) | Search only source/headers | "Find the implementation of StoreMoney" |
 | 4 | [`search_hex_pattern`](#4-search_hex_pattern--hex-code-lookup) | Hex error code / packet ID lookup | "What is error 88a153?" |
 | 5 | [`find_function`](#5-find_function--function-lookup) | Find function declarations + callers | "Find function CmdDispense" |
 | 6 | [`find_variable`](#6-find_variable--variable-constant-lookup) | Find variable/constant/enum definitions and usage | "Find variable NOTE_HANDLING_DEPOSIT_REJECT" |
-| 7 | [`get_document`](#7-get_document--retrieve-a-full-file) | Retrieve a full indexed file | "Show me RejectRerouter.h" |
+| 7 | [`get_document`](#7-get_document--retrieve-a-full-file) | Retrieve a full indexed file | "Show me server.py" |
 | 8 | [`list_projects`](#8-list_projects--see-whats-indexed) | See what's indexed | "What projects are indexed?" |
 | 9 | [`list_files`](#9-list_files--browse-project-files) | Browse files in a project | "List all headers in the project A project" |
 | 10 | [`get_project_summary`](#10-get_project_summary--project-overview) | Quick project overview | "Give me a summary of the project A project" |
@@ -24,10 +24,9 @@ You don't call these tools directly — just ask questions naturally and the AI 
 | 14 | [`add_folder`](#14-add_folder--index-a-folder) | Index all files in a folder and persist for re-indexing | "Add the tests folder to the project A project" |
 | 15 | [`search_logs`](#15-search_logs--structured-log-search) | Search indexed log events with filtering | "Find ERR entries with error code 88a153 in the last hour" |
 | 16 | [`index_log_file`](#16-index_log_file--index-a-log-file-on-demand) | Index a log file (or time window) on demand | "Index the last hour of device-26-04-28.log" |
-| 17 | [`cancel_indexing`](#17-cancel_indexing--stop-indexing) | Stop any in-progress indexing operation | "Cancel the current indexing" |
-| 18 | [`remove_project`](#18-remove_project--remove-a-project) | Remove a project and all its indexed data | "Remove the device logs project" |
-| 19 | [`clear_project_index`](#19-clear_project_index--clear-indexed-data) | Clear indexed data but keep project config | "Clear the device logs index" |
-| 20 | [`remove_file_from_index`](#20-remove_file_from_index--remove-a-files-chunks) | Remove a specific file's chunks from the index | "Remove device-26-04-28.log from the index" |
+| 17 | [`remove_project`](#17-remove_project--remove-a-project) | Remove a project and all its indexed data | "Remove the device logs project" |
+| 18 | [`clear_project_index`](#18-clear_project_index--clear-indexed-data) | Clear indexed data but keep project config | "Clear the device logs index" |
+| 19 | [`remove_file_from_index`](#19-remove_file_from_index--remove-a-files-chunks) | Remove a specific file's chunks from the index | "Remove device-26-04-28.log from the index" |
 
 ## Available Tools
 
@@ -51,9 +50,8 @@ You don't call these tools directly — just ask questions naturally and the AI 
 **When to use:** When you want to know what the spec says, not how it's implemented.
 
 **Example prompts:**
-- "What does the spec say about URJB1?"
-- "Find the requirements for deposit reject rerouting"
-- "Search specs for cancel dispense limitations"
+- "Find the requirements for cancel credit"
+- "Search specs for new crypto feature"
 
 ---
 
@@ -64,9 +62,8 @@ You don't call these tools directly — just ask questions naturally and the AI 
 **When to use:** When you want implementation details.
 
 **Example prompts:**
-- "Find the implementation of StoreMoney"
-- "Search code for how BRU_CASHUNIT_STATUS_FULL is handled"
-- "Show me header declarations for RejectRerouter"
+- "Find the implementation of data layer status"
+- "Show me header declarations for crypto states"
 
 ---
 
@@ -106,10 +103,8 @@ You don't call these tools directly — just ask questions naturally and the AI 
 **When to use:** When you have a specific identifier and need to see its definition and all files that use it.
 
 **Example prompts:**
-- "Find variable NOTE_HANDLING_DEPOSIT_REJECT"
-- "Where is BRU_CASHUNIT_STATUS_FULL defined?"
-- "Find all files using REROUTE_TARGET_URJB1_INDEX"
-- "Where is DENOMINATION_CODE_UNKNOWN used?"
+- "Find variable X"
+- "Where is CASHED defined?"
 
 ---
 
@@ -120,7 +115,7 @@ You don't call these tools directly — just ask questions naturally and the AI 
 **When to use:** When a search result looks relevant and you want to see the full file.
 
 **Example prompts:**
-- "Show me the full RejectRerouter.h file from the project A project"
+- "Show me the full server.py file from the project A project"
 
 ---
 
@@ -233,11 +228,10 @@ You don't call these tools directly — just ask questions naturally and the AI 
 | `top_k` | integer (1–50, default 20) | Maximum results to return |
 
 **Example prompts:**
-- "Search logs for errors with code 88a153"
+- "Search logs for errors with code AAA999"
 - "Find all ERROR severity log events from today"
-- "Search logs for SndRecvData commands that failed"
 - "Find log events between 05:00 and 05:30 on April 28"
-- "Show me all command events in the my_device_logs project"
+- "Show me all command events in the my_logs project"
 
 **Tips:**
 - Use `error_code_pattern` with a prefix to find all variants of an error code family
@@ -264,13 +258,11 @@ You don't call these tools directly — just ask questions naturally and the AI 
 
 **Example prompts:**
 - "Index the log file device-26-04-28.log"
-- "Index XRV2-2026-06-03.log between 10:00 and 11:00"
-- "Index all XRV2 logs from May 14: XRV2-2026-05-14*.log"
+- "Index 2026-06-03.log between 10:00 and 11:00"
 
 **Behavior:**
 - Files are processed in 10k-line streaming batches (never loads the entire file into memory)
 - Each batch goes through the full pipeline: parse → filter → transform → group → embed → store
-- Cancellation responds within ~2 seconds (use `cancel_indexing` to stop)
 - Already-stored chunks are preserved if interrupted — re-running is idempotent (upsert)
 - Large log files (>5MB) are automatically skipped during background reindex and must be indexed via this tool
 - Progress is logged every ~100k lines as a percentage
@@ -285,30 +277,8 @@ You don't call these tools directly — just ask questions naturally and the AI 
 
 ---
 
-### 17. cancel_indexing — Stop indexing
 
-**What it does:** Cancels the background reindex operation that runs on server startup. The current file completes, then reindexing stops. Chunks already stored are preserved.
-
-**When to use:** When the background reindex is taking too long and consuming CPU you need for other tasks.
-
-**Example prompts:**
-- "Cancel the current indexing"
-- "Stop background reindex"
-
-**Behavior:**
-- Stops the background reindex thread after the current file
-- All chunks stored before cancellation remain in the database
-- Does **NOT** affect a running `index_log_file` call (MCP tools are synchronous)
-- To stop a running `index_log_file`, restart the MCP server from Kiro's MCP panel
-
-**Important limitations:**
-- MCP tools are synchronous — while `index_log_file` is running, no other tool calls can be processed
-- For large files (>50 MB), always use `time_from`/`time_to` to limit scope
-- Restarting the MCP server is safe — stored chunks are preserved (deterministic IDs based on line numbers)
-
----
-
-### 18. remove_project — Remove a project
+### 17. remove_project — Remove a project
 
 **What it does:** Removes a project entirely — deletes all indexed chunks from ChromaDB AND removes the project entry from config.yaml.
 
@@ -331,7 +301,7 @@ You don't call these tools directly — just ask questions naturally and the AI 
 
 ---
 
-### 19. clear_project_index — Clear indexed data
+### 18. clear_project_index — Clear indexed data
 
 **What it does:** Deletes all indexed chunks for a project but keeps the project configured in config.yaml. Ready for re-indexing.
 
@@ -354,7 +324,7 @@ You don't call these tools directly — just ask questions naturally and the AI 
 
 ---
 
-### 20. remove_file_from_index — Remove a file's chunks
+### 19. remove_file_from_index — Remove a file's chunks
 
 **What it does:** Removes all indexed chunks for a specific file from a project's index. Supports exact path and partial/filename matching.
 

@@ -9,7 +9,7 @@ Separately, the ~19 test files that exist locally (but untracked) are organized 
 Finally, running the current suite locally produces 20 failing tests out of 176 (156 passing, 3 skipped). Investigation during requirements gathering confirmed these failures fall into four distinct root-cause categories:
 
 1. **Hardcoded, machine-specific fixtures** — `test_add_file_folder.py` and most of `test_mcp_tools.py` hardcode Windows developer-machine paths (e.g. `C:/Users/you/GIT/my-project/...`) and assume a pre-existing indexed ChromaDB project (`my-project`, `my-project-a`) that does not exist on a fresh checkout or in CI.
-2. **A genuine product bug** — `ProjectAutoDetector._apply_stack_rules` in `src/rag_mcp/auto_detector.py` does not correctly evaluate the `has_direct_files` / `patterns_if_direct` / `patterns_if_nested` branch against `config/detection_rules.json`, so the two "C-Fontes" detection tests in `test_auto_detector.py` receive an empty pattern list.
+2. **A genuine product bug** — `ProjectAutoDetector._apply_stack_rules` in `src/rag_mcp/auto_detector.py` does not correctly evaluate the `has_direct_files` / `patterns_if_direct` / `patterns_if_nested` branch against `config/detection_rules.json`.
 3. **Shared mutable global state across tests** — `test_clear_project_index.py` and `test_remove_project.py` mutate a module-level `server.config` / `server.store` singleton without adequate isolation between tests, causing order-dependent failures (e.g. a `removed` flag not reflecting the change just made, or a project inserted by one test appearing "not found" in another).
 4. **A flaky hardcoded timing threshold** — `test_mcp_connection.py` asserts server startup completes in under 30 seconds; measured startup was 32 seconds, an environment-dependent, non-deterministic bound rather than a real regression.
 
@@ -87,17 +87,10 @@ This feature un-ignores and commits `tests/` to version control, reorganizes it 
 5. WHEN a corrected test creates or indexes a project into the Shared_Server_Context, THE Test_Suite SHALL remove that project from the Shared_Server_Context after the test completes, regardless of whether the test passed or failed, so it does not affect the fixtures or assertions of any other test.
 6. IF a Fresh_Checkout run reports a test from Requirement 4's scope as failing, THEN THE Test_Suite SHALL treat that test as not corrected, regardless of whether it passes in a developer's local environment with pre-existing indexed content.
 
-### Requirement 5: Fix the Auto-Detector Bug Uncovered by Failing Tests
-
-**User Story:** As a user relying on automatic project-structure detection, I want the C-Fontes flat and nested layout detection to actually produce the documented glob patterns, so that `add_project` generates correct `config.yaml` source entries for C/C++ projects using that layout.
-
 #### Acceptance Criteria
 
-1. WHEN the Auto_Detector scans a directory containing a `C-Fontes/` folder with `.h` files directly inside it, THE Auto_Detector SHALL return a detected source pattern of `C-Fontes/*.h`; WHEN that folder also contains `.cpp` files directly inside it, THE Auto_Detector SHALL additionally return a detected source pattern of `C-Fontes/*.cpp`.
-2. WHEN the Auto_Detector scans a directory containing a `C-Fontes/<subfolder>/` layout with `.h` files nested inside a subfolder and no `.h` files directly inside `C-Fontes/`, THE Auto_Detector SHALL return a detected source pattern of `C-Fontes/**/*.h`; WHEN that layout also has `.cpp` files nested inside a subfolder and no `.cpp` files directly inside `C-Fontes/`, THE Auto_Detector SHALL additionally return a detected source pattern of `C-Fontes/**/*.cpp`.
 3. THE Auto_Detector's rule-evaluation logic SHALL, for a rule defining `has_direct_files`, `patterns_if_direct`, and `patterns_if_nested` fields: check for the presence of files matching any of the `has_direct_files` glob patterns directly inside the rule's `check_dir`; return the `patterns_if_direct` patterns when at least one such file is found; and return the `patterns_if_nested` patterns when no such file is found directly inside `check_dir` but at least one file matching the same glob patterns exists in a subfolder of `check_dir`.
 4. IF a rule defines `has_direct_files`, `patterns_if_direct`, and `patterns_if_nested` fields and the rule's `check_dir` does not exist, THEN THE Auto_Detector SHALL NOT match that rule and SHALL NOT return any pattern from `patterns_if_direct` or `patterns_if_nested` for it.
-5. WHEN the Auto_Detector scans a directory whose only cpp-stack marker is a `C-Fontes/` folder (no `CMakeLists.txt`, `*.vcxproj`, or `src/` marker present), THE Auto_Detector SHALL still detect the `cpp` stack for that directory and apply the `C-Fontes` rule from Criteria 1-2.
 
 ### Requirement 6: Fix Pre-Existing Failing Tests Caused by Shared Mutable Server State
 

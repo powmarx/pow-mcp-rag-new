@@ -152,10 +152,6 @@ Key tools for log analysis:
 - `index_log_file(file, time_from?, time_to?)` — Index a log file on demand (streams large files in batches)
 - `search_logs(query?, severity?, time_range_start?, ...)` — Search indexed log events with rich filtering
 
-> **Note on `cancel_indexing`:** This tool exists but is not useful in Docker mode. The server
-> runs with `--no-reindex` so no background reindex ever starts, and MCP tools are synchronous —
-> `cancel_indexing` cannot interrupt a running `index_log_file` call from another thread.
-> To stop a long-running `index_log_file`, restart the MCP server from Kiro's MCP panel.
 
 ### Re-index from Kiro
 

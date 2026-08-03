@@ -262,13 +262,6 @@ shows the canonical `config/detection_rules.json` is missing two things that onl
 the packaged copy — meaning someone edited the packaged output directly instead of the
 source of truth:
 
-1. `"C-Fontes"` is absent from the `cpp` stack's `marker_dirs` (only `["src"]` is present),
-   so `_detect_stacks` never identifies `cpp` for a directory whose only C/C++ signal is a
-   `C-Fontes/` folder (breaks Requirement 5.5).
-2. The entire `has_direct_files` / `patterns_if_direct` / `patterns_if_nested` rule for
-   `C-Fontes` is missing from `cpp.rules` (breaks Requirements 5.1, 5.2 — `_apply_stack_rules`
-   never even sees a C-Fontes rule to evaluate).
-
 **A second, independent defect exists in the code itself**, in
 `ProjectAutoDetector._apply_stack_rules` (`src/rag_mcp/auto_detector.py`), that would still
 produce wrong results even after the data is restored. The current branch:
@@ -319,31 +312,6 @@ file matches directly inside `dir_path`, any `rglob` match found by `has_files_r
 must be at depth ≥ 1 (a genuine subfolder match), so no extra exclusion logic is needed
 beyond the helper that already exists.
 
-**Data fix** — restore the missing `marker_dirs` entry and rule block to
-`config/detection_rules.json` (bringing it back in sync with, and as the canonical source
-for, `src/rag_mcp/data/detection_rules.json`):
-
-```jsonc
-"cpp": {
-  "markers": ["CMakeLists.txt", "*.vcxproj"],
-  "marker_dirs": ["C-Fontes", "src"],
-  "rules": [
-    {
-      "check_dir": ["C-Fontes"],
-      "has_direct_files": ["*.h", "*.cpp"],
-      "patterns_if_direct": [
-        {"glob": "C-Fontes/*.h", "type": "header", "description": "Header files"},
-        {"glob": "C-Fontes/*.cpp", "type": "source", "description": "Source files"}
-      ],
-      "patterns_if_nested": [
-        {"glob": "C-Fontes/**/*.h", "type": "header", "description": "Header files"},
-        {"glob": "C-Fontes/**/*.cpp", "type": "source", "description": "Source files"}
-      ]
-    },
-    ... (existing src/include, src, include, component, CMakeLists.txt rules unchanged)
-  ]
-}
-```
 
 After this change, `scripts/sync_package_data.py` is re-run (as it already is before every
 wheel build, per its own docstring) so `src/rag_mcp/data/detection_rules.json` — now
@@ -476,32 +444,6 @@ see Testing Strategy). The sole exception is `ProjectAutoDetector`'s rule-evalua
 exist, at which depth, under a scanned directory — and is exactly the kind of parser/detector
 logic this project's own testing conventions call out for property-based coverage.
 
-**Property reflection**: Requirement 5.1 (direct C-Fontes files → `patterns_if_direct`) and
-5.2 (nested-only C-Fontes files → `patterns_if_nested`) are each one concrete branch of the
-general rule described by 5.3 (check direct presence first, fall back to checking nested
-presence, otherwise match nothing) — Property 1 below generalizes over all three placement
-cases (files directly in `check_dir`, files only in a subfolder, no matching files at all)
-and subsumes 5.1/5.2 as two of its four branches, so they are not listed as separate
-properties. Requirement 5.4 (a `check_dir` that does not exist as a directory at all) is kept
-as its own property because it exercises a different function (`_rule_matches`'s
-directory-existence short-circuit) than the file-matching branch in `_apply_stack_rules` —
-logically distinct from "directory exists but is empty," which Property 1's "neither" branch
-already covers. Requirement 5.5 (stack detection triggered by `C-Fontes/` alone, with no
-`CMakeLists.txt`/`*.vcxproj`/`src/`) is kept separate because it exercises `_detect_stacks`,
-a step logically prior to and independent of rule evaluation.
-
-### Property 1: Direct/nested/neither rule evaluation is exhaustive and mutually exclusive
-
-*For any* directory layout under a rule's `check_dir` — files matching a `has_direct_files`
-glob placed directly inside `check_dir`, files matching the same glob placed only inside a
-subfolder of `check_dir`, or no files matching the glob anywhere under `check_dir` —
-`ProjectAutoDetector`'s rule evaluation SHALL return exactly the rule's `patterns_if_direct`
-when at least one direct match exists, exactly the rule's `patterns_if_nested` when no direct
-match exists but at least one nested match does, and no patterns from that rule when neither
-a direct nor a nested match exists.
-
-**Validates: Requirements 5.1, 5.2, 5.3**
-
 ### Property 2: A missing `check_dir` never contributes patterns
 
 *For any* rule defining `has_direct_files`, `patterns_if_direct`, and `patterns_if_nested`
@@ -509,17 +451,6 @@ whose `check_dir` does not exist as a directory under the scanned project path,
 `ProjectAutoDetector` SHALL NOT match that rule and SHALL NOT return any pattern from either
 `patterns_if_direct` or `patterns_if_nested` for it, regardless of what files exist elsewhere
 in the project.
-
-**Validates: Requirements 5.4**
-
-### Property 3: `C-Fontes/` alone is sufficient to detect the cpp stack
-
-*For any* directory whose only C/C++ stack marker is a `C-Fontes/` folder — no
-`CMakeLists.txt`, no `*.vcxproj` file, and no `src/` directory present —
-`ProjectAutoDetector._detect_stacks` SHALL still include `"cpp"` in the detected stacks, so
-that the `C-Fontes` rule from Property 1 is subsequently applied.
-
-**Validates: Requirements 5.5**
 
 ## Error Handling
 
@@ -553,59 +484,11 @@ spec's `test_check_release_version.py` — minimum 100 examples via
 - A second generator builds directories where the target `check_dir` path is never created
   at all (Property 2), alongside sibling directories/files that must be ignored regardless
   of what's inside them.
-- A third generator builds directories with a `C-Fontes/` folder present (with a random file
-  inside it, to keep the case realistic) but no `CMakeLists.txt`, no `*.vcxproj`, and no
-  `src/` — for Property 3, asserting `"cpp" in detector._detect_stacks(path)`.
-
+- 
 ```python
 # tests/indexing/test_auto_detector.py
 from hypothesis import given, settings, strategies as st
 
-# Feature: test-suite-reorganization, Property 1: Direct/nested/neither rule evaluation is exhaustive and mutually exclusive
-@settings(max_examples=100)
-@given(placement=st.sampled_from(["direct", "nested", "neither"]))
-def test_c_fontes_rule_evaluation_by_placement(tmp_path, placement):
-    c_fontes = tmp_path / "C-Fontes"
-    c_fontes.mkdir()
-    if placement == "direct":
-        (c_fontes / "main.h").write_text("#pragma once")
-    elif placement == "nested":
-        nested = c_fontes / "sub"
-        nested.mkdir()
-        (nested / "main.h").write_text("#pragma once")
-    # "neither": C-Fontes/ exists but stays empty
-
-    sources = ProjectAutoDetector().detect(tmp_path)
-    patterns = {s.pattern for s in sources}
-
-    if placement == "direct":
-        assert "C-Fontes/*.h" in patterns and "C-Fontes/**/*.h" not in patterns
-    elif placement == "nested":
-        assert "C-Fontes/**/*.h" in patterns and "C-Fontes/*.h" not in patterns
-    else:
-        assert "C-Fontes/*.h" not in patterns and "C-Fontes/**/*.h" not in patterns
-
-
-# Feature: test-suite-reorganization, Property 2: A missing check_dir never contributes patterns
-@settings(max_examples=100)
-@given(unrelated_file=st.sampled_from(["README.md", "notes.txt", "config.ini"]))
-def test_missing_check_dir_contributes_nothing(tmp_path, unrelated_file):
-    (tmp_path / unrelated_file).write_text("content")  # C-Fontes/ never created
-    sources = ProjectAutoDetector().detect(tmp_path)
-    patterns = {s.pattern for s in sources}
-    assert "C-Fontes/*.h" not in patterns and "C-Fontes/**/*.h" not in patterns
-
-
-# Feature: test-suite-reorganization, Property 3: C-Fontes alone is sufficient to detect the cpp stack
-@settings(max_examples=100)
-@given(filename=st.sampled_from(["main.h", "main.cpp", "types.h"]))
-def test_c_fontes_alone_detects_cpp_stack(tmp_path, filename):
-    c_fontes = tmp_path / "C-Fontes"
-    c_fontes.mkdir()
-    (c_fontes / filename).write_text("// content")
-    detector = ProjectAutoDetector()
-    assert "cpp" in detector._detect_stacks(tmp_path)
-```
 
 **Unit / example-based tests** (everything else — per the prework analysis, static
 file-content facts, fixed enumerable mappings, and refactoring judgment calls about the

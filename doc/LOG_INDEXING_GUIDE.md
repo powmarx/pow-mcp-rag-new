@@ -90,18 +90,6 @@ A 576 MB file with a 1-hour time window takes **seconds**. Without a time window
 3. Progress reported as percentage every ~100k lines
 4. Chunks use deterministic IDs (based on line numbers) — re-running is idempotent
 
-### Cancellation
-
-If indexing takes too long:
-
-```
-"Cancel the current indexing"
-```
-
-The `cancel_indexing` tool stops processing after the current batch (~2 seconds). Already-stored chunks are preserved. Re-running `index_log_file` on the same file continues seamlessly.
-
-**Important:** Always use `cancel_indexing` instead of killing the process. Force-killing leaves PyTorch DLLs locked, requiring a reboot.
-
 ### Project configuration
 
 Set `auto_reindex: false` in `config.yaml` for log-heavy projects to prevent the background reindex from attempting them:

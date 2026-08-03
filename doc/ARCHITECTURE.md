@@ -157,7 +157,7 @@ pow-mcp-rag-new/
 │       │   ├── search.py              # search_docs, search_specs, search_code, etc.
 │       │   ├── management.py          # add_project, add_pattern, remove_project, etc.
 │       │   ├── documents.py           # get_document, list_files, get_project_summary
-│       │   ├── logs.py                # index_log_file, search_logs, cancel_indexing
+│       │   ├── logs.py                # index_log_file, search_logs
 │       │   └── helpers.py             # Shared helpers (FILE_TYPE_MAP, etc.)
 │       └── log/                   # Structured log indexing
 │           ├── config_models.py       # Log-specific config dataclasses
