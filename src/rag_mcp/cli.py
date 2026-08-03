@@ -113,71 +113,61 @@ def main() -> None:
     from rag_mcp.paths import resolve_config_path, resolve_data_path
 
     args = sys.argv[1:]
+    command = args[0] if args else "serve"
 
-    # --- docs subcommand ---
-    if args and args[0] == "docs":
-        _docs_main(args)
-        return
+    match command:
+        case "docs":
+            _docs_main(args)
 
-    # --- config subcommand ---
-    if args and args[0] == "config":
-        cfg = resolve_config_path()
-        data = resolve_data_path()
-        print(f"Config : {cfg}")
-        print(f"Data   : {data}")
-        if "--init" in args:
-            print("Config file seeded (or already exists).")
-        return
+        case "config":
+            cfg = resolve_config_path()
+            data = resolve_data_path()
+            print(f"Config : {cfg}")
+            print(f"Data   : {data}")
+            if "--init" in args:
+                print("Config file seeded (or already exists).")
 
-    # --- index subcommand ---
-    if not args or args[0] == "index":
-        cfg_path = resolve_config_path()
-        data_path = resolve_data_path()
-        _ensure_data_path_in_config(cfg_path, data_path)
+        case "index":
+            _prepare_env()
+            rest = args[1:] if args and args[0] == "index" else []
+            sys.argv = [sys.argv[0]] + rest
 
-        import os
-        os.environ.setdefault("RAG_CONFIG_PATH", str(cfg_path))
+            from rag_mcp._indexer import main as indexer_main
+            indexer_main()
 
-        # Delegate to indexer main, stripping the 'index' subcommand token
-        if args and args[0] == "index":
-            sys.argv = [sys.argv[0]] + args[1:]
-        else:
-            sys.argv = [sys.argv[0]]
+        case "serve":
+            _prepare_env()
+            rest = args[1:] if args and args[0] == "serve" else args
+            sys.argv = [sys.argv[0]] + rest
 
-        from rag_mcp._indexer import main as indexer_main
-        indexer_main()
-        return
+            from rag_mcp._server import main as server_main
+            server_main()
 
-    # --- serve subcommand (default) ---
-    if args[0] == "serve":
-        cfg_path = resolve_config_path()
-        data_path = resolve_data_path()
-        _ensure_data_path_in_config(cfg_path, data_path)
+        case _:
+            print(
+                "Usage: rag-mcp <command> [options]\n"
+                "\n"
+                "Commands:\n"
+                "  serve    Start the MCP server (default: stdio transport)\n"
+                "  index    Index project files into ChromaDB\n"
+                "  config   Show resolved config and data paths\n"
+                "  docs     List or print bundled documentation (tools, log-indexing, log-patterns)\n"
+                "\n"
+                "Run 'rag-mcp <command> --help' for command-specific options.\n",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+            
+def _prepare_env() -> Path:
+    """Resolve config/data paths, ensure config has data path set, and export RAG_CONFIG_PATH."""
+    cfg_path = resolve_config_path()
+    data_path = resolve_data_path()
+    _ensure_data_path_in_config(cfg_path, data_path)
 
-        import os
-        os.environ.setdefault("RAG_CONFIG_PATH", str(cfg_path))
+    import os
+    os.environ.setdefault("RAG_CONFIG_PATH", str(cfg_path))
 
-        # Pass remaining args to server (--http, --no-reindex, --port, etc.)
-        sys.argv = [sys.argv[0]] + args[1:]
-        from rag_mcp._server import main as server_main
-        server_main()
-        return
-
-    # --- fallback: unknown subcommand ---
-    print(
-        "Usage: rag-mcp <command> [options]\n"
-        "\n"
-        "Commands:\n"
-        "  serve    Start the MCP server (default: stdio transport)\n"
-        "  index    Index project files into ChromaDB\n"
-        "  config   Show resolved config and data paths\n"
-        "  docs     List or print bundled documentation (tools, log-indexing, log-patterns)\n"
-        "\n"
-        "Run 'rag-mcp <command> --help' for command-specific options.\n",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
+    return cfg_path
 
 if __name__ == "__main__":
     main()
