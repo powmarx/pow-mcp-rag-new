@@ -70,15 +70,15 @@ For large log files (>5 MB), the background reindex skips them automatically. Us
 ### Basic usage
 
 ```
-"Index the log file my_device-2026-04-28.log"
-"Index my_device-2026-06-03.log"
+"Index the log file 2026-04-28.log"
+"Index 2026-06-03.log"
 ```
 
 ### With time window (recommended for large files)
 
 ```
-"Index my_device-2026-04-28.log between 14:00 and 15:00"
-"Index my_device-2026-05-14.log from 10:00:00 to 11:30:00"
+"Index 2026-04-28.log between 14:00 and 15:00"
+"Index 2026-05-14.log from 10:00:00 to 11:30:00"
 ```
 
 A 576 MB file with a 1-hour time window takes **seconds**. Without a time window, it takes ~15-20 minutes.
@@ -95,7 +95,7 @@ A 576 MB file with a 1-hour time window takes **seconds**. Without a time window
 Set `auto_reindex: false` in `config.yaml` for log-heavy projects to prevent the background reindex from attempting them:
 
 ```yaml
-- name: my_device_logs
+- name: my_logs
   auto_reindex: false
   base_path: C:\path\to\logs
   sources:
@@ -231,19 +231,19 @@ The `search_logs` MCP tool searches indexed log events with structured filtering
 
 ```
 # Semantic search for dispense failures
-search_logs(query="dispense failed", project="my_device_logs")
+search_logs(query="dispense failed", project="my_logs")
 
 # Filter by severity and time range
 search_logs(severity="ERROR", time_range_start="2026-04-28T05:00:00Z", time_range_end="2026-04-28T06:00:00Z")
 
 # Error code prefix matching
-search_logs(error_code_pattern="88a153", project="my_device_logs")
+search_logs(error_code_pattern="88a153", project="my_logs")
 
 # Combine semantic search with filters
 search_logs(query="serial exchange", severity="ERROR", event_type="error")
 
 # Filter-only (results ordered by timestamp descending)
-search_logs(event_type="command", device_id="my_device.dll")
+search_logs(event_type="command", type_id="type.dll")
 ```
 
 ---

@@ -403,9 +403,9 @@ def test_valid_line_filters_and_transforms_load():
           priority: 200
       grouping_rules:
         - name: "cmd_lifecycle"
-          start_pattern: '.*executeCMD Begin.*'
+          start_pattern: '.*execute Begin.*'
           continuation_patterns:
-            - '.*executeCMD End.*'
+            - '.*execute End.*'
 """
     path = _make_config(log_settings=settings)
     try:

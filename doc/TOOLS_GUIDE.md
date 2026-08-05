@@ -252,7 +252,7 @@ You don't call these tools directly — just ask questions naturally and the AI 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `file` | string (required) | Log filename or glob pattern (e.g., "device-26-04-28.log") |
-| `project` | string (default: "my_device_logs") | Project name containing log sources |
+| `project` | string (default: "my_logs") | Project name containing log sources |
 | `time_from` | string | Start time filter, HH:MM:SS format (e.g., "14:00:00") |
 | `time_to` | string | End time filter, HH:MM:SS format (e.g., "15:30:00") |
 
@@ -285,7 +285,7 @@ You don't call these tools directly — just ask questions naturally and the AI 
 **When to use:** When you no longer need a project in the RAG index and want to clean up completely.
 
 **Example prompts:**
-- "Remove the my_device_logs project"
+- "Remove the my_logs project"
 - "Delete the old test project from RAG"
 
 **Parameters:**

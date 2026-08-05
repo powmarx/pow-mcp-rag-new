@@ -43,12 +43,12 @@ A unique identifier (1–64 chars, alphanumeric + underscores).
 **Convention**: `<system>_<what_it_matches>`
 
 Examples:
-- `device_sta_buffer` — matches STA lines with protocol buffer data
-- `device_cmd_begin` — matches command execution start markers
-- `device_sndrecv_error` — matches serial communication error lines
+- `cache_buffer` — matches cache buffer
+- `system_api_call` — matches command execution API calls
+- `system_api_warning` — matches API warnings
 
 Tips:
-- Use a prefix that identifies the device/system (e.g., `device_`)
+- Use a prefix that identifies the system (e.g., `system`)
 - Use a suffix that describes the content semantics (e.g., `_error`, `_call`)
 - Keep it short but unambiguous within the project
 
@@ -60,15 +60,15 @@ Classifies what this log line represents semantically. This is a **free-form str
 
 | Value | Use when... | Examples |
 |---|---|---|
-| `command` | Sending a request or initiating an operation | SndRecvData call, executeCMD Begin, STA WDATA |
-| `response` | Receiving a result or completion status | executeCMD End (with return code), RESP packets |
-| `error` | A failure or abnormal condition | ERR lines, hex error codes, executeCMD ERROR |
-| `warning` | Non-fatal issue that deserves attention | WRN lines, hardware warnings |
-| `info` | Normal operational information | INF, DBG, CFG, PRM messages |
-| `state_change` | System transitioning between states | INI/FIM begin/end markers, status transitions |
-| `diagnostic` | Low-level trace/debug data | DBX extended debug markers, hex dumps |
+| `command` | Sending a request or initiating an operation | API calls, system calls |
+| `response` | Receiving a result or completion status | execution commands (with return code), buffers |
+| `error` | A failure or abnormal condition | error lines, hex error codes, command error |
+| `warning` | Non-fatal issue that deserves attention | warning lines, API warnings |
+| `info` | Normal operational information | information messages |
+| `state_change` | System transitioning between states | begin/end markers, status transitions |
+| `diagnostic` | Low-level trace/debug data |debug markers, hex dumps |
 
-**Custom examples**: `heartbeat`, `metric`, `crypto_handshake`, `firmware_update`
+**Custom examples**: `heartbeat`, `metric`, `crypto_handshake`
 
 **Decision flowchart**:
 1. Is this line INITIATING an action? → `command`
@@ -98,7 +98,7 @@ Determines which pattern matches first when multiple patterns could match the sa
 - More specific patterns get LOWER numbers (higher priority)
 - The general catch-all must have the HIGHEST number
 - If two patterns could match the same line, the one extracting MORE useful fields should have lower priority (so it wins)
-- Example: `"ERR:...|SndRecvData: last_error = 9F000000"` matches both `device_sndrecv_error` (pri 35) and `device_err_generic` (pri 50) — pri 35 wins, extracting the `error_code` field specifically
+
 
 #### `regex`
 
@@ -108,7 +108,7 @@ Python-compatible regex with named capture groups.
 
 **Optional groups** (become searchable metadata):
 - `(?P<severity>...)` — raw severity prefix (will be normalized via `severity_mapping`)
-- `(?P<device_id>...)` — identifies which DLL/module/device produced the line
+- `(?P<system_id>...)` — identifies which DLL/module/system produced the line
 - `(?P<command_name>...)` — the command or operation being performed
 - `(?P<error_code>...)` — error/status code for filtering
 - `(?P<message>...)` — the main content for semantic search
@@ -119,12 +119,12 @@ Python-compatible regex with named capture groups.
 
 1. **Identify** a log line type you want to extract structured data from:
    ```
-   ERR:05:01:02:004|MyDevice.dll|ThrId: 16200 |LLDeviceHOTS|SndRecvData: last_error = 9F000000
+   ERR:05:01:02:004|System.dll|SystemClass|API_CALL: error = 999999
    ```
 
 2. **Write a regex** with named groups to capture the fields you need:
    ```
-   (?P<severity>ERR):(?P<timestamp>\d{2}:\d{2}:\d{2}:\d{3})\|(?P<device_id>[^|]+)\|ThrId:\s+\d+\s+(?:\|[^|]+\|)?SndRecvData:\s+last_error\s+=\s+(?P<error_code>[0-9A-Fa-f]{8})(?P<message>.*)
+   (?P<severity>ERR):(?P<timestamp>\d{2}:\d{2}:\d{2}:\d{3})\|(?P<device_id>[^|]+)\|ThrId:\s+\d+\s+(?:\|[^|]+\|)?API_CALL:\s+last_error\s+=\s+(?P<error>[0-9A-Fa-f]{8})(?P<message>.*)
    ```
 
 3. **Choose an event_type**: `error` (this is reporting a failure)
@@ -133,8 +133,8 @@ Python-compatible regex with named capture groups.
 
 5. **Add to the `log_patterns` list**:
    ```yaml
-   - name: device_sndrecv_error
-     regex: '(?P<severity>ERR):(?P<timestamp>\d{2}:\d{2}:\d{2}:\d{3})\|...'
+   - name: system_api_err
+     regex: '(?P<severity>ERROR):(?P<timestamp>\d{2}:\d{2}:\d{2}:\d{3})\|...'
      event_type: error
      priority: 35
    ```
@@ -230,22 +230,22 @@ severity_mapping:
 
 ## Example Patterns Reference
 
-A typical device log configuration defines a set of prioritized patterns like this:
+A typical system log configuration defines a set of prioritized patterns like this:
 
 | Priority | Name | Event Type | What It Catches |
 |---|---|---|---|
-| 10 | `device_sta_buffer` | command | STA lines with `[COMA+MAND*] ` — actual serial protocol data |
-| 20 | `device_command_begin` | command | `Manager\|executeCMD: Begin` — API command start |
-| 21 | `device_command_end` | response | `Manager\|executeCMD: End` — API command completion with return code |
-| 30 | `device_message_call` | command | `SndRecvData: call(...)` — serial dispatch to hardware |
-| 35 | `device_message_error` | error | `SndRecvData: last_error = XXXXXXXX` — device error code |
-| 40 | `device_err_hex_code` | error | ERR lines with hex codes (`cmd_cc_ret=`, `error_code=`) |
-| 45 | `device_err_command_error` | error | `executeCMD: ERROR - [N]` — API-level error |
-| 50 | `device_err_generic` | error | Any remaining ERR lines |
-| 60 | `device_wrn` | warning | WRN lines |
-| 70 | `device_ini_fim` | state_change | INI/FIM function begin/end markers |
-| 80 | `device_dbx` | diagnostic | DBX extended debug markers |
-| 100 | `device_general` | info | Catch-all for everything else |
+| 10 | `system_api_buffer` | command | Raw protocol/buffer lines — low-level data frames |
+| 20 | `api_command_begin` | command | `Handler\|execute: Begin` — API call start |
+| 21 | `api_command_end` | response | `Handler\|execute: End` — API call completion with return code |
+| 30 | `system_dispatch_call` | command | Dispatch/transport call to downstream service or hardware |
+| 35 | `system_dispatch_error` | error | Transport-level error code from downstream call |
+| 40 | `api_err_code` | error | ERROR lines with structured codes (e.g. `ret_code=`, `error_code=`) |
+| 45 | `api_err_command_error` | error | `execute: ERROR - [N]` — API-level error |
+| 50 | `api_err_generic` | error | Any remaining ERROR lines |
+| 60 | `system_warning` | warning | WARN lines |
+| 70 | `system_lifecycle` | state_change | INIT/SHUTDOWN or begin/end function markers |
+| 80 | `system_debug` | diagnostic | Extended debug/trace markers |
+| 100 | `system_general` | info | Catch-all for everything else |
 
 Command IDs, error codes, and response semantics are entirely protocol-specific — define your
-own reference table in your project's config or docs for the device you're indexing.
+own reference table in your project's config or docs for the API/system you're indexing.

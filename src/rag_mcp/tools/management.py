@@ -576,7 +576,7 @@ def remove_project(name: str) -> str:
     the project as removed in config.yaml (preserving configuration for future re-add).
 
     Args:
-        name: Project name to remove (e.g., "my_device_logs")
+        name: Project name to remove (e.g., "my_logs")
 
     Returns:
         Confirmation of removal with chunk count deleted.
@@ -632,7 +632,7 @@ def clear_project_index(name: str) -> str:
     The project remains configured and can be re-indexed later.
 
     Args:
-        name: Project name to clear (e.g., "my_device_logs")
+        name: Project name to clear (e.g., "my_logs")
 
     Returns:
         Confirmation with number of chunks deleted.
@@ -675,7 +675,7 @@ def remove_file_from_index(file_path: str, project: str) -> str:
 
     Args:
         file_path: Relative file path within the project (e.g., "device-26-04-28.log")
-        project: Project name (e.g., "my_device_logs")
+        project: Project name (e.g., "my_logs")
 
     Returns:
         Confirmation with number of chunks removed.
