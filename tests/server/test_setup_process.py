@@ -230,7 +230,7 @@ def test_embedding_lock_allows_sequential_access():
 # =============================================================================
 
 
-async def test_no_reindex_flag_skips_reindex():
+async def test_no_reindex_flag_skips_reindex(server_subprocess_env):
     """Server with --no-reindex should start faster (no file scanning)."""
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -238,6 +238,7 @@ async def test_no_reindex_flag_skips_reindex():
     server_params = StdioServerParameters(
         command=PYTHON,
         args=[str(SERVER_SCRIPT), "--no-reindex"],
+        env=server_subprocess_env,
         cwd=str(SCRIPT_DIR),
     )
 
@@ -252,7 +253,7 @@ async def test_no_reindex_flag_skips_reindex():
     print(f"  PASS: --no-reindex startup in {elapsed:.1f}s (limit: 30s)")
 
 
-async def test_server_responds_during_reindex():
+async def test_server_responds_during_reindex(server_subprocess_env):
     """Server WITHOUT --no-reindex should still respond to queries (non-blocking reindex)."""
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -261,6 +262,7 @@ async def test_server_responds_during_reindex():
     server_params = StdioServerParameters(
         command=PYTHON,
         args=[str(SERVER_SCRIPT)],
+        env=server_subprocess_env,
         cwd=str(SCRIPT_DIR),
     )
 
@@ -295,7 +297,7 @@ async def test_server_responds_during_reindex():
 # =============================================================================
 
 
-async def test_concurrent_query_during_reindex():
+async def test_concurrent_query_during_reindex(server_subprocess_env):
     """Should be able to query while background reindex is running."""
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -304,6 +306,7 @@ async def test_concurrent_query_during_reindex():
     server_params = StdioServerParameters(
         command=PYTHON,
         args=[str(SERVER_SCRIPT)],  # No --no-reindex, so background reindex starts
+        env=server_subprocess_env,
         cwd=str(SCRIPT_DIR),
     )
 

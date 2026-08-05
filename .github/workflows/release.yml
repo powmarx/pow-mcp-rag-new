@@ -21,11 +21,6 @@ jobs:
       - name: Install project with dev dependencies
         run: python -m pip install -e ".[dev]"
 
-      - name: Seed config.yaml from the bundled template
-        run: |
-          mkdir -p config
-          cp src/rag_mcp/data/config.template.yaml config/config.yaml
-
       - name: Run test suite
         run: pytest
 

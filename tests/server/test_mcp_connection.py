@@ -30,7 +30,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
-async def test_mcp_server_full_integration(tmp_path):
+async def test_mcp_server_full_integration(tmp_path, server_subprocess_env):
     """Full MCP server integration test using a single server process.
 
     Starts one server subprocess and verifies: startup, handshake, tool listing,
@@ -40,6 +40,7 @@ async def test_mcp_server_full_integration(tmp_path):
     server_params = StdioServerParameters(
         command=PYTHON,
         args=[str(SERVER_SCRIPT), "--no-reindex"],
+        env=server_subprocess_env,
         cwd=str(SCRIPT_DIR),
     )
 
@@ -67,13 +68,16 @@ async def test_mcp_server_full_integration(tmp_path):
             tools_result = await session.list_tools()
             tool_names = [t.name for t in tools_result.tools]
 
-            expected_tools = ["search_docs", "get_document", "list_projects", "list_files",
-                              "search_hex_pattern", "find_variable", "search_specs", "search_code",
-                              "find_function", "compare_projects", "get_project_summary",
-                              "add_file", "add_folder", "add_project"]
-            missing = [t for t in expected_tools if t not in tool_names]
+            expected_tools = {
+                "search_docs", "search_specs", "search_code", "search_hex_pattern",
+                "find_function", "find_variable", "get_document", "list_projects",
+                "list_files", "get_project_summary", "compare_projects", "add_project",
+                "add_file", "add_folder", "add_pattern", "remove_project",
+                "clear_project_index", "remove_file_from_index", "search_logs",
+                "index_log_file",
+            }
+            missing = sorted(expected_tools - set(tool_names))
             assert not missing, f"Missing tools: {missing}"
-            assert len(tool_names) >= 14, f"Expected at least 14 tools, got {len(tool_names)}"
 
             # --- 4. Tool schemas ---
             for tool in tools_result.tools:
