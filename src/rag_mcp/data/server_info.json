@@ -1,5 +1,5 @@
 {
   "name": "rag-mcp",
   "description": "Semantic search over code and documentation",
-  "version": "1.1.9"
+  "version": "1.1.10"
 }
