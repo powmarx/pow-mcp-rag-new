@@ -48,7 +48,29 @@ Option 3 — module-level marker::
     pytestmark = pytest.mark.usefixtures("isolated_server_context")
 """
 
+import os
+import sys
+import tempfile
+from pathlib import Path
+
 import pytest
+
+# mcp_tools imports server.py during collection; make startup deterministic
+# without requiring repo-local config/config.yaml.
+if "--no-reindex" not in sys.argv:
+    sys.argv.append("--no-reindex")
+
+if not os.environ.get("RAG_CONFIG_PATH"):
+    _repo_root = Path(__file__).parent.parent.parent
+    _template = _repo_root / "src" / "rag_mcp" / "data" / "config.template.yaml"
+    _tmp_dir = Path(tempfile.mkdtemp(prefix="rag-mcp-tests-"))
+    _cfg_path = _tmp_dir / "config.yaml"
+    _data_path = (_tmp_dir / "data").as_posix()
+
+    cfg_text = _template.read_text(encoding="utf-8").replace('path: "./data"', f'path: "{_data_path}"')
+    _cfg_path.write_text(cfg_text, encoding="utf-8")
+    os.environ["RAG_CONFIG_PATH"] = str(_cfg_path)
+
 import server
 import rag_mcp.tools.management as _management
 
