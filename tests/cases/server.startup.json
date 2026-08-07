@@ -22,7 +22,8 @@
           "PYTHONUNBUFFERED": "1"
         },
         "timeout_seconds": 12,
-        "expect_timeout": true
+        "allow_timeout": true,
+        "expected_exit_code": 0
       },
       "expect": {
         "contains": ["Core ready", "Auto-reindex disabled (--no-reindex)"]

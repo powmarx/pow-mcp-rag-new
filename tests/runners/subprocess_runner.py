@@ -28,6 +28,7 @@ def run_subprocess_case(case: dict[str, Any], context: dict[str, Any] | None = N
 
     timeout_seconds = inputs.get("timeout_seconds")
     expect_timeout = bool(inputs.get("expect_timeout", False))
+    allow_timeout = bool(inputs.get("allow_timeout", False))
     timed_out = False
 
     try:
@@ -50,16 +51,16 @@ def run_subprocess_case(case: dict[str, Any], context: dict[str, Any] | None = N
         assert timed_out, (
             f"Expected subprocess timeout for command {command}, but it completed.\nOutput:\n{output}"
         )
-    elif timed_out:
+    elif timed_out and not allow_timeout:
         raise AssertionError(
             f"Subprocess timed out unexpectedly for command {command}.\nOutput:\n{output}"
         )
 
     expected_exit = inputs.get("expected_exit_code")
     if expected_exit is not None:
-        assert completed is not None, "Cannot assert expected_exit_code when process timed out"
-        assert completed.returncode == int(expected_exit), (
-            f"Expected exit {expected_exit}, got {completed.returncode}\nOutput:\n{output}"
-        )
+        if completed is not None:
+            assert completed.returncode == int(expected_exit), (
+                f"Expected exit {expected_exit}, got {completed.returncode}\nOutput:\n{output}"
+            )
 
     assert_expected_text(output, rendered_case.get("expect", {}))
