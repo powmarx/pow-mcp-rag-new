@@ -8,7 +8,7 @@ Outputs .md files alongside the original PDFs.
 import sys
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import pymupdf  # PyMuPDF
 
 
 class PDFConverter:
@@ -29,7 +29,7 @@ class PDFConverter:
             output_path = pdf_path.with_suffix(".md")
 
         try:
-            doc = fitz.open(str(pdf_path))
+            doc = pymupdf.open(str(pdf_path))
         except Exception as e:
             print(f"  [error] Failed to open PDF: {pdf_path}: {e}", file=sys.stderr)
             return None
