@@ -15,6 +15,7 @@ import os
 import sys
 import time
 import threading
+import warnings
 from pathlib import Path
 
 # Force stderr to be line-buffered so background thread logs appear immediately
@@ -23,6 +24,21 @@ sys.stderr.reconfigure(line_buffering=True)
 
 # Add src/ to path so rag_mcp package is importable
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+# pydantic-settings may emit an IncompleteFieldDefinitionWarning for FastMCP's
+# internal "lifespan" field forward ref on some dependency combinations. This
+# is upstream and does not affect runtime behavior for this server.
+try:
+    from pydantic_settings.sources.utils import IncompleteFieldDefinitionWarning
+except ImportError:
+    IncompleteFieldDefinitionWarning = None
+
+if IncompleteFieldDefinitionWarning is not None:
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*Field 'lifespan' has an incomplete definition.*",
+        category=IncompleteFieldDefinitionWarning,
+    )
 
 from mcp.server.fastmcp import FastMCP
 

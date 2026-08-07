@@ -11,7 +11,26 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 from pathlib import Path
+
+
+def _suppress_fastmcp_lifespan_warning() -> None:
+    """Suppress known upstream pydantic-settings warning from FastMCP internals."""
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*lifespan.*incomplete definition.*",
+        module=r"pydantic_settings\.sources\.utils",
+    )
+    try:
+        from pydantic_settings.sources.utils import IncompleteFieldDefinitionWarning
+    except ImportError:
+        return
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*lifespan.*incomplete definition.*",
+        category=IncompleteFieldDefinitionWarning,
+    )
 
 
 def main() -> None:
@@ -58,6 +77,8 @@ def _run_inline() -> None:
     import threading
 
     sys.stderr.reconfigure(line_buffering=True)
+
+    _suppress_fastmcp_lifespan_warning()
 
     from rag_mcp.chroma_store import ChromaStore
     from rag_mcp.config_loader import ConfigLoader
