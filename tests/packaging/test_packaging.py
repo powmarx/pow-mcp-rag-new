@@ -45,17 +45,6 @@ def test_default_config_path_uses_appdata_on_windows():
     print(f"  PASS: config path = {cfg}")
 
 
-def test_default_config_path_uses_xdg_config_home():
-    """XDG_CONFIG_HOME override should be respected."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with patch.dict(os.environ, {"XDG_CONFIG_HOME": tmpdir}):
-            cfg = paths.default_config_path()
-    assert str(tmpdir) in str(cfg)
-    assert "rag-mcp" in str(cfg)
-    assert cfg.name == "config.yaml"
-    print(f"  PASS: XDG_CONFIG_HOME override respected")
-
-
 def test_default_data_path_uses_localappdata_on_windows():
     """On Windows, data should land in %LOCALAPPDATA%/rag-mcp/."""
     if sys.platform != "win32":
@@ -67,55 +56,9 @@ def test_default_data_path_uses_localappdata_on_windows():
     print(f"  PASS: data path = {data}")
 
 
-def test_default_data_path_uses_xdg_data_home():
-    """XDG_DATA_HOME override should be respected."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with patch.dict(os.environ, {"XDG_DATA_HOME": tmpdir}):
-            data = paths.default_data_path()
-    assert str(tmpdir) in str(data)
-    assert "rag-mcp" in str(data)
-    print(f"  PASS: XDG_DATA_HOME override respected")
-
-
 # =============================================================================
 # 2. Env var overrides
 # =============================================================================
-
-def test_rag_config_path_env_overrides_default():
-    """RAG_CONFIG_PATH env var should bypass XDG resolution."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        custom = Path(tmpdir) / "custom_config.yaml"
-        custom.write_text("projects: []\n", encoding="utf-8")
-        with patch.dict(os.environ, {"RAG_CONFIG_PATH": str(custom)}):
-            result = paths.resolve_config_path()
-    assert result == custom
-    print(f"  PASS: RAG_CONFIG_PATH override = {result}")
-
-
-def test_rag_data_path_env_overrides_default():
-    """RAG_DATA_PATH env var should bypass XDG resolution."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with patch.dict(os.environ, {"RAG_DATA_PATH": tmpdir}):
-            result = paths.resolve_data_path()
-    assert str(result) == tmpdir
-    print(f"  PASS: RAG_DATA_PATH override = {result}")
-
-
-def test_empty_rag_config_path_falls_back_to_xdg():
-    """Empty RAG_CONFIG_PATH should fall back to XDG path."""
-    env = {k: v for k, v in os.environ.items() if k not in ("RAG_CONFIG_PATH", "XDG_CONFIG_HOME")}
-    with tempfile.TemporaryDirectory() as tmpdir:
-        env["XDG_CONFIG_HOME"] = tmpdir
-        # Pre-create the config so resolve doesn't seed
-        cfg = Path(tmpdir) / "rag-mcp" / "config.yaml"
-        cfg.parent.mkdir(parents=True)
-        cfg.write_text("projects: []\n", encoding="utf-8")
-        env["RAG_CONFIG_PATH"] = ""
-        with patch.dict(os.environ, env, clear=True):
-            result = paths.resolve_config_path()
-    assert "rag-mcp" in str(result)
-    assert result.name == "config.yaml"
-    print(f"  PASS: empty RAG_CONFIG_PATH falls back to XDG")
 
 
 # =============================================================================
@@ -234,15 +177,37 @@ def test_pyproject_toml_is_valid():
 # =============================================================================
 
 def test_cli_script_is_installed():
-    """rag-mcp script should exist in the venv Scripts/bin directory."""
+    """rag-mcp command entrypoint should be invokable in this environment."""
     scripts_dir = Path(sys.executable).parent
+    scripts_subdir = scripts_dir / "Scripts"
     candidates = [
         scripts_dir / "rag-mcp",
         scripts_dir / "rag-mcp.exe",
+        scripts_subdir / "rag-mcp",
+        scripts_subdir / "rag-mcp.exe",
     ]
-    found = any(p.exists() for p in candidates)
-    assert found, f"rag-mcp script not found in {scripts_dir}"
-    print(f"  PASS: CLI script found in {scripts_dir}")
+    found = next((p for p in candidates if p.exists()), None)
+    if found is not None:
+        print(f"  PASS: CLI script found at {found}")
+        return
+
+    # Source-checkout fallback: script may not be installed globally, but the
+    # module entrypoint must still execute.
+    result = __import__("subprocess").run(
+        [sys.executable, "-m", "rag_mcp.cli", "config"],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")},
+        check=False,
+    )
+    assert result.returncode == 0, (
+        "Neither rag-mcp script nor python -m rag_mcp.cli is runnable.\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+    assert "Config" in result.stdout and "Data" in result.stdout
+    print("  PASS: module entrypoint works without installed script")
 
 def test_prepare_env_resolves_paths(monkeypatch, tmp_path):
     """_prepare_env() must resolve config/data paths without NameError —

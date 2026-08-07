@@ -110,25 +110,6 @@ def test_add_file_valid(indexed_project):
     assert "Persisted" in result, f"Expected 'Persisted' in result: {result}"
 
 
-def test_add_file_nonexistent():
-    """add_file with non-existent file should return error."""
-    result = _add_file_sync("C:/nonexistent/file.txt", "any-project")
-    assert result.startswith("Error")
-    assert "does not exist" in result
-
-
-def test_add_file_empty_path():
-    """add_file with empty path should return error."""
-    result = _add_file_sync("", "any-project")
-    assert result.startswith("Error")
-
-
-def test_add_file_empty_project():
-    """add_file with empty project should return error."""
-    result = _add_file_sync("C:/some/file.txt", "")
-    assert result.startswith("Error")
-
-
 def test_add_file_unknown_project(tmp_path):
     """add_file with unknown project should return error."""
     # Use a real file so the call gets past filesystem validation and reaches the
@@ -158,13 +139,6 @@ def test_add_folder_valid(indexed_project):
     assert "Persisted" in result, f"Expected 'Persisted' in result: {result}"
 
 
-def test_add_folder_nonexistent():
-    """add_folder with non-existent folder should return error."""
-    result = _add_folder_sync("C:/nonexistent/folder", "any-project")
-    assert result.startswith("Error")
-    assert "does not exist" in result
-
-
 def test_add_folder_outside_base(indexed_project, tmp_path):
     """add_folder with folder outside project base_path should return error."""
     project_name, _project_dir = indexed_project
@@ -177,18 +151,6 @@ def test_add_folder_outside_base(indexed_project, tmp_path):
 
     assert result.startswith("Error"), f"Expected error, got: {result}"
     assert "base_path" in result, f"Expected 'base_path' in result: {result}"
-
-
-def test_add_folder_empty_path():
-    """add_folder with empty path should return error."""
-    result = _add_folder_sync("", "any-project")
-    assert result.startswith("Error")
-
-
-def test_add_folder_empty_project():
-    """add_folder with empty project should return error."""
-    result = _add_folder_sync("C:/some/folder", "")
-    assert result.startswith("Error")
 
 
 def test_add_folder_no_matching_files(indexed_project):

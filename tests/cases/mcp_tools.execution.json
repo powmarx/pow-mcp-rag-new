@@ -1,0 +1,9 @@
+{
+  "schema": "tests/cases/schema/casepack.schema.json",
+  "pack_id": "mcp-tools-execution",
+  "domain": "mcp_tools",
+  "version": 1,
+  "description": "Execution-focused MCP tool cases. Populated incrementally during migration.",
+  "cases": []
+}
+

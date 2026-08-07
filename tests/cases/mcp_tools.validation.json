@@ -1,0 +1,171 @@
+{
+  "schema": "tests/cases/schema/casepack.schema.json",
+  "pack_id": "mcp-tools-validation",
+  "domain": "mcp_tools",
+  "version": 1,
+  "description": "Validation-focused MCP tool cases migrated from python parameter matrices.",
+  "cases": [
+    {
+      "id": "remove-project-empty-name",
+      "title": "remove_project returns required-name error when input is empty",
+      "runner": "validation_runner",
+      "operation": "management.remove_project",
+      "inputs": {
+        "name": ""
+      },
+      "expect": {
+        "contains": ["Error", "required"]
+      },
+      "tags": ["validation", "remove_project"]
+    },
+    {
+      "id": "remove-project-whitespace-name",
+      "title": "remove_project rejects whitespace-only name",
+      "runner": "validation_runner",
+      "operation": "management.remove_project",
+      "inputs": {
+        "name": "   "
+      },
+      "expect": {
+        "contains": ["Error"]
+      },
+      "tags": ["validation", "remove_project"]
+    },
+    {
+      "id": "remove-project-missing-project",
+      "title": "remove_project returns not-found for unknown project",
+      "runner": "validation_runner",
+      "operation": "management.remove_project",
+      "inputs": {
+        "name": "nonexistent_project_xyz"
+      },
+      "expect": {
+        "contains": ["Error", "not found"]
+      },
+      "tags": ["validation", "remove_project"]
+    },
+    {
+      "id": "clear-project-empty-name",
+      "title": "clear_project_index returns required-name error when input is empty",
+      "runner": "validation_runner",
+      "operation": "management.clear_project_index",
+      "inputs": {
+        "name": ""
+      },
+      "expect": {
+        "contains": ["Error", "required"]
+      },
+      "tags": ["validation", "clear_project_index"]
+    },
+    {
+      "id": "clear-project-whitespace-name",
+      "title": "clear_project_index rejects whitespace-only name",
+      "runner": "validation_runner",
+      "operation": "management.clear_project_index",
+      "inputs": {
+        "name": "   "
+      },
+      "expect": {
+        "contains": ["Error"]
+      },
+      "tags": ["validation", "clear_project_index"]
+    },
+    {
+      "id": "clear-project-missing-project",
+      "title": "clear_project_index returns not-found for unknown project",
+      "runner": "validation_runner",
+      "operation": "management.clear_project_index",
+      "inputs": {
+        "name": "nonexistent_project_xyz"
+      },
+      "expect": {
+        "contains": ["Error", "not found"]
+      },
+      "tags": ["validation", "clear_project_index"]
+    },
+    {
+      "id": "add-file-empty-path",
+      "title": "add_file requires file_path",
+      "runner": "validation_runner",
+      "operation": "management.add_file_sync",
+      "inputs": {
+        "file_path": "",
+        "project": "any-project"
+      },
+      "expect": {
+        "contains": ["Error", "file_path is required"]
+      },
+      "tags": ["validation", "add_file"]
+    },
+    {
+      "id": "add-file-empty-project",
+      "title": "add_file requires project name",
+      "runner": "validation_runner",
+      "operation": "management.add_file_sync",
+      "inputs": {
+        "file_path": "C:/some/file.txt",
+        "project": ""
+      },
+      "expect": {
+        "contains": ["Error", "project is required"]
+      },
+      "tags": ["validation", "add_file"]
+    },
+    {
+      "id": "add-file-missing-file",
+      "title": "add_file returns file missing error for unknown file",
+      "runner": "validation_runner",
+      "operation": "management.add_file_sync",
+      "inputs": {
+        "file_path": "C:/nonexistent/file.txt",
+        "project": "any-project"
+      },
+      "expect": {
+        "contains": ["Error", "does not exist"]
+      },
+      "tags": ["validation", "add_file"]
+    },
+    {
+      "id": "add-folder-empty-path",
+      "title": "add_folder requires folder_path",
+      "runner": "validation_runner",
+      "operation": "management.add_folder_sync",
+      "inputs": {
+        "folder_path": "",
+        "project": "any-project"
+      },
+      "expect": {
+        "contains": ["Error", "folder_path is required"]
+      },
+      "tags": ["validation", "add_folder"]
+    },
+    {
+      "id": "add-folder-empty-project",
+      "title": "add_folder requires project name",
+      "runner": "validation_runner",
+      "operation": "management.add_folder_sync",
+      "inputs": {
+        "folder_path": "C:/some/folder",
+        "project": ""
+      },
+      "expect": {
+        "contains": ["Error", "project is required"]
+      },
+      "tags": ["validation", "add_folder"]
+    },
+    {
+      "id": "add-folder-missing-folder",
+      "title": "add_folder returns folder missing error",
+      "runner": "validation_runner",
+      "operation": "management.add_folder_sync",
+      "inputs": {
+        "folder_path": "C:/nonexistent/folder",
+        "project": "any-project"
+      },
+      "expect": {
+        "contains": ["Error", "does not exist"]
+      },
+      "tags": ["validation", "add_folder"]
+    }
+  ]
+}

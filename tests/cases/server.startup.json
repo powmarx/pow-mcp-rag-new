@@ -1,0 +1,54 @@
+{
+  "schema": "tests/cases/schema/casepack.schema.json",
+  "pack_id": "server-startup",
+  "domain": "server",
+  "version": 1,
+  "description": "Selected startup matrix checks for server launch modes.",
+  "cases": [
+    {
+      "id": "startup-no-reindex-prints-flag-state",
+      "runner": "subprocess_runner",
+      "requires_fixture": true,
+      "operation": "subprocess.exec",
+      "inputs": {
+        "command": [
+          "{{fixture.python}}",
+          "-u",
+          "{{fixture.server_script}}",
+          "--no-reindex"
+        ],
+        "env": {
+          "RAG_CONFIG_PATH": "{{fixture.rag_config_path}}",
+          "PYTHONUNBUFFERED": "1"
+        },
+        "timeout_seconds": 12,
+        "expect_timeout": true
+      },
+      "expect": {
+        "contains": ["Core ready", "Auto-reindex disabled (--no-reindex)"]
+      }
+    },
+    {
+      "id": "startup-default-launches-background-index",
+      "runner": "subprocess_runner",
+      "requires_fixture": true,
+      "operation": "subprocess.exec",
+      "inputs": {
+        "command": [
+          "{{fixture.python}}",
+          "-u",
+          "{{fixture.server_script}}"
+        ],
+        "env": {
+          "RAG_CONFIG_PATH": "{{fixture.rag_config_path}}",
+          "PYTHONUNBUFFERED": "1"
+        },
+        "expected_exit_code": 0
+      },
+      "expect": {
+        "contains_any": ["Background indexing started", "Background reindex scheduled"],
+        "contains": ["Core ready"]
+      }
+    }
+  ]
+}

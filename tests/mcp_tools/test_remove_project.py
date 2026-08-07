@@ -31,27 +31,6 @@ import server
 from rag_mcp.tools.management import remove_project
 
 
-class TestRemoveProjectValidation:
-    """Tests for input validation."""
-
-    def test_empty_name_returns_error(self):
-        """Empty name should return error."""
-        result = remove_project(name="")
-        assert "Error" in result
-        assert "required" in result
-
-    def test_whitespace_name_returns_error(self):
-        """Whitespace-only name should return error."""
-        result = remove_project(name="   ")
-        assert "Error" in result
-
-    def test_nonexistent_project_returns_error(self):
-        """Non-existent project should return error."""
-        result = remove_project(name="nonexistent_project_xyz")
-        assert "Error" in result
-        assert "not found" in result
-
-
 @pytest.mark.usefixtures("isolated_server_context")
 class TestRemoveProjectExecution:
     """Tests for actual project removal.

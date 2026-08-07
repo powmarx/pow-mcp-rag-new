@@ -1,0 +1,252 @@
+{
+  "schema": "tests/cases/schema/casepack.schema.json",
+  "pack_id": "mcp-tools-integration",
+  "domain": "mcp_tools",
+  "version": 1,
+  "description": "Integration-oriented MCP tool scenarios with fixture-aware placeholders.",
+  "cases": [
+    {
+      "id": "search-specs-returns-documentation",
+      "runner": "state_runner",
+      "operation": "search.search_docs_sync",
+      "requires_fixture": true,
+      "inputs": {
+        "query": "{{fixture.function_name}}",
+        "project": "{{fixture.name_a}}",
+        "file_type": "documentation"
+      },
+      "expect": {
+        "contains": ["Found"],
+        "not_starts_with": "Error"
+      }
+    },
+    {
+      "id": "search-specs-empty-query",
+      "runner": "validation_runner",
+      "operation": "search.search_docs_sync",
+      "inputs": {
+        "query": "",
+        "file_type": "documentation"
+      },
+      "expect": {
+        "contains_any": ["Error", "empty"]
+      }
+    },
+    {
+      "id": "search-code-returns-source",
+      "runner": "state_runner",
+      "operation": "search.search_code_sync",
+      "requires_fixture": true,
+      "inputs": {
+        "query": "{{fixture.function_name}}",
+        "project": "{{fixture.name_a}}"
+      },
+      "expect": {
+        "not_starts_with": "Error",
+        "contains_any": ["Result", "source", "header", "No code results found"]
+      }
+    },
+    {
+      "id": "search-code-headers-only",
+      "runner": "state_runner",
+      "operation": "search.search_code_sync",
+      "requires_fixture": true,
+      "inputs": {
+        "query": "{{fixture.function_name}}",
+        "project": "{{fixture.name_a}}",
+        "headers_only": true
+      },
+      "expect": {
+        "not_starts_with": "Error"
+      }
+    },
+    {
+      "id": "find-function-known",
+      "runner": "state_runner",
+      "operation": "search.find_function_sync",
+      "requires_fixture": true,
+      "inputs": {
+        "function_name": "{{fixture.function_name}}",
+        "project": "{{fixture.name_a}}"
+      },
+      "expect": {
+        "contains": ["{{fixture.function_name}}"],
+        "contains_any": ["Files containing", "Result", "Declarations"],
+        "not_starts_with": "Error"
+      }
+    },
+    {
+      "id": "find-function-empty",
+      "runner": "validation_runner",
+      "operation": "search.find_function_sync",
+      "inputs": {
+        "function_name": ""
+      },
+      "expect": {
+        "contains": ["Error"]
+      }
+    },
+    {
+      "id": "compare-projects-both",
+      "runner": "state_runner",
+      "operation": "documents.compare_projects_sync",
+      "requires_fixture": true,
+      "inputs": {
+        "query": "{{fixture.function_name}}",
+        "project_a": "{{fixture.name_a}}",
+        "project_b": "{{fixture.name_b}}"
+      },
+      "expect": {
+        "contains": ["PROJECT A", "PROJECT B", "{{fixture.name_a}}", "{{fixture.name_b}}"]
+      }
+    },
+    {
+      "id": "compare-projects-missing-project",
+      "runner": "state_runner",
+      "operation": "documents.compare_projects_sync",
+      "requires_fixture": true,
+      "inputs": {
+        "query": "some query",
+        "project_a": "{{fixture.name_a}}",
+        "project_b": "NonExistentProject"
+      },
+      "expect": {
+        "contains": ["PROJECT A", "PROJECT B"],
+        "contains_any": ["not found", "Error"]
+      }
+    },
+    {
+      "id": "compare-projects-empty-query",
+      "runner": "validation_runner",
+      "operation": "documents.compare_projects_sync",
+      "inputs": {
+        "query": "",
+        "project_a": "A",
+        "project_b": "B"
+      },
+      "expect": {
+        "contains": ["Error"]
+      }
+    },
+    {
+      "id": "get-project-summary-a",
+      "runner": "state_runner",
+      "operation": "documents.get_project_summary",
+      "requires_fixture": true,
+      "inputs": {
+        "project": "{{fixture.name_a}}"
+      },
+      "expect": {
+        "contains": ["{{fixture.name_a}}", "Total files:", "Total chunks:"]
+      }
+    },
+    {
+      "id": "get-project-summary-missing",
+      "runner": "validation_runner",
+      "operation": "documents.get_project_summary",
+      "inputs": {
+        "project": "NonExistent"
+      },
+      "expect": {
+        "contains_any": ["Error", "not found"]
+      }
+    },
+    {
+      "id": "get-project-summary-empty",
+      "runner": "validation_runner",
+      "operation": "documents.get_project_summary",
+      "inputs": {
+        "project": ""
+      },
+      "expect": {
+        "contains": ["Error"]
+      }
+    },
+    {
+      "id": "search-hex-pattern-found",
+      "runner": "state_runner",
+      "operation": "search.search_hex_pattern",
+      "requires_fixture": true,
+      "inputs": {
+        "pattern": "{{fixture.hex_code}}",
+        "project": "{{fixture.name_a}}"
+      },
+      "expect": {
+        "contains": ["Match", "{{fixture.hex_code}}"]
+      }
+    },
+    {
+      "id": "search-hex-pattern-with-0x-prefix",
+      "runner": "validation_runner",
+      "operation": "search.search_hex_pattern",
+      "inputs": {
+        "pattern": "0x0521"
+      },
+      "expect": {
+        "not_starts_with": "Error"
+      }
+    },
+    {
+      "id": "search-hex-pattern-empty",
+      "runner": "validation_runner",
+      "operation": "search.search_hex_pattern",
+      "inputs": {
+        "pattern": ""
+      },
+      "expect": {
+        "contains": ["Error"]
+      }
+    },
+    {
+      "id": "search-hex-pattern-not-found",
+      "runner": "state_runner",
+      "operation": "search.search_hex_pattern",
+      "requires_fixture": true,
+      "inputs": {
+        "pattern": "ZZZZZZZZ",
+        "project": "{{fixture.name_a}}"
+      },
+      "expect": {
+        "contains": ["No matches"]
+      }
+    },
+    {
+      "id": "add-project-invalid-path",
+      "runner": "validation_runner",
+      "operation": "management.add_project_sync",
+      "inputs": {
+        "name": "test-invalid",
+        "path": "C:/nonexistent/path/xyz"
+      },
+      "expect": {
+        "contains": ["Error", "does not exist"]
+      }
+    },
+    {
+      "id": "add-project-empty-name",
+      "runner": "validation_runner",
+      "operation": "management.add_project_sync",
+      "inputs": {
+        "name": "",
+        "path": "C:/some/path"
+      },
+      "expect": {
+        "contains": ["Error"]
+      }
+    },
+    {
+      "id": "add-project-duplicate",
+      "runner": "state_runner",
+      "operation": "management.add_project_sync",
+      "requires_fixture": true,
+      "inputs": {
+        "name": "{{fixture.name_a}}",
+        "path": "C:/some/path"
+      },
+      "expect": {
+        "contains_any": ["Error", "already exists"]
+      }
+    }
+  ]
+}
+

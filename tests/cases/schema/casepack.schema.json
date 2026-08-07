@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://powmarx.dev/schemas/tests/casepack.schema.json",
+  "title": "MCP test case pack",
+  "type": "object",
+  "required": ["schema", "pack_id", "domain", "version", "cases"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "tests/cases/schema/casepack.schema.json"
+    },
+    "pack_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": ["id", "runner", "operation", "inputs"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "runner": {
+          "type": "string",
+          "enum": ["validation_runner", "state_runner", "subprocess_runner"]
+        },
+        "operation": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_]+\\.[a-zA-Z0-9_]+$"
+        },
+        "inputs": {
+          "type": "object"
+        },
+        "expect": {
+          "type": "object",
+          "properties": {
+            "contains": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "not_contains": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "contains_any": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "equals": {
+              "type": "string"
+            },
+            "starts_with": {
+              "type": "string"
+            },
+            "not_starts_with": {
+              "type": "string"
+            },
+            "regex": {
+              "type": "string"
+            },
+            "length_equals": {
+              "type": "integer"
+            },
+            "length_gte": {
+              "type": "integer"
+            },
+            "length_lte": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        "state_assertions": {
+          "type": "array",
+          "items": {"type": "object"}
+        },
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "requires_fixture": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

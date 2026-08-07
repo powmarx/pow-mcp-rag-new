@@ -31,24 +31,6 @@ import server
 from rag_mcp.tools.management import clear_project_index
 
 
-class TestClearProjectIndexValidation:
-    """Tests for input validation."""
-
-    def test_empty_name_returns_error(self):
-        result = clear_project_index(name="")
-        assert "Error" in result
-        assert "required" in result
-
-    def test_whitespace_name_returns_error(self):
-        result = clear_project_index(name="   ")
-        assert "Error" in result
-
-    def test_nonexistent_project_returns_error(self):
-        result = clear_project_index(name="nonexistent_project_xyz")
-        assert "Error" in result
-        assert "not found" in result
-
-
 @pytest.mark.usefixtures("isolated_server_context")
 class TestClearProjectIndexExecution:
     """Tests for actual index clearing.

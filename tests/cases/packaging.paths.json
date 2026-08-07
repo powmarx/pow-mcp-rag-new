@@ -1,0 +1,116 @@
+{
+  "schema": "tests/cases/schema/casepack.schema.json",
+  "pack_id": "packaging-paths",
+  "domain": "packaging",
+  "version": 1,
+  "description": "Data-driven packaging path/environment permutations.",
+  "cases": [
+    {
+      "id": "default-config-path-uses-xdg-config-home",
+      "runner": "subprocess_runner",
+      "requires_fixture": true,
+      "operation": "subprocess.exec",
+      "inputs": {
+        "command": [
+          "{{fixture.python}}",
+          "-c",
+          "from rag_mcp import paths; print(paths.default_config_path())"
+        ],
+        "env": {
+          "PYTHONPATH": "{{fixture.src_path}}",
+          "XDG_CONFIG_HOME": "{{fixture.xdg_config_home}}"
+        },
+        "expected_exit_code": 0
+      },
+      "expect": {
+        "contains": ["{{fixture.xdg_config_home}}", "rag-mcp", "config.yaml"]
+      }
+    },
+    {
+      "id": "default-data-path-uses-xdg-data-home",
+      "runner": "subprocess_runner",
+      "requires_fixture": true,
+      "operation": "subprocess.exec",
+      "inputs": {
+        "command": [
+          "{{fixture.python}}",
+          "-c",
+          "from rag_mcp import paths; print(paths.default_data_path())"
+        ],
+        "env": {
+          "PYTHONPATH": "{{fixture.src_path}}",
+          "XDG_DATA_HOME": "{{fixture.xdg_data_home}}"
+        },
+        "expected_exit_code": 0
+      },
+      "expect": {
+        "contains": ["{{fixture.xdg_data_home}}", "rag-mcp"]
+      }
+    },
+    {
+      "id": "rag-config-path-env-overrides-default",
+      "runner": "subprocess_runner",
+      "requires_fixture": true,
+      "operation": "subprocess.exec",
+      "inputs": {
+        "command": [
+          "{{fixture.python}}",
+          "-c",
+          "from rag_mcp import paths; print(paths.resolve_config_path())"
+        ],
+        "env": {
+          "PYTHONPATH": "{{fixture.src_path}}",
+          "RAG_CONFIG_PATH": "{{fixture.custom_config_path}}"
+        },
+        "expected_exit_code": 0
+      },
+      "expect": {
+        "contains": ["{{fixture.custom_config_path}}"]
+      }
+    },
+    {
+      "id": "rag-data-path-env-overrides-default",
+      "runner": "subprocess_runner",
+      "requires_fixture": true,
+      "operation": "subprocess.exec",
+      "inputs": {
+        "command": [
+          "{{fixture.python}}",
+          "-c",
+          "from rag_mcp import paths; print(paths.resolve_data_path())"
+        ],
+        "env": {
+          "PYTHONPATH": "{{fixture.src_path}}",
+          "RAG_DATA_PATH": "{{fixture.custom_data_path}}"
+        },
+        "expected_exit_code": 0
+      },
+      "expect": {
+        "contains": ["{{fixture.custom_data_path}}"]
+      }
+    },
+    {
+      "id": "empty-rag-config-path-falls-back-to-xdg",
+      "runner": "subprocess_runner",
+      "requires_fixture": true,
+      "operation": "subprocess.exec",
+      "inputs": {
+        "command": [
+          "{{fixture.python}}",
+          "-c",
+          "from rag_mcp import paths; print(paths.resolve_config_path())"
+        ],
+        "env": {
+          "PYTHONPATH": "{{fixture.src_path}}",
+          "XDG_CONFIG_HOME": "{{fixture.xdg_config_home}}",
+          "RAG_CONFIG_PATH": ""
+        },
+        "expected_exit_code": 0
+      },
+      "expect": {
+        "contains": ["{{fixture.xdg_config_home}}", "rag-mcp", "config.yaml"]
+      }
+    }
+  ]
+}
+
