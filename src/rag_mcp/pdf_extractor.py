@@ -1,5 +1,5 @@
 """
-PDF text extraction using PyMuPDF (fitz).
+PDF text extraction using PyMuPDF (pymupdf).
 
 Extracts text content from PDF files for indexing into the RAG system.
 Handles multi-page documents, mixed text/image pages, and image-only PDFs.
@@ -8,7 +8,7 @@ Handles multi-page documents, mixed text/image pages, and image-only PDFs.
 import sys
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import pymupdf  # PyMuPDF
 
 
 class PDFExtractor:
@@ -21,7 +21,7 @@ class PDFExtractor:
         Returns concatenated page text, or None if no extractable text found.
         """
         try:
-            doc = fitz.open(str(filepath))
+            doc = pymupdf.open(str(filepath))
         except Exception as e:
             print(f"  [warning] Failed to open PDF {filepath}: {e}", file=sys.stderr)
             return None
@@ -43,7 +43,7 @@ class PDFExtractor:
     def has_text(self, filepath: Path) -> bool:
         """Quick check if PDF contains any extractable text."""
         try:
-            doc = fitz.open(str(filepath))
+            doc = pymupdf.open(str(filepath))
             try:
                 for page in doc:
                     text = page.get_text("text")
