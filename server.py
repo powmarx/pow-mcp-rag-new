@@ -25,20 +25,25 @@ sys.stderr.reconfigure(line_buffering=True)
 # Add src/ to path so rag_mcp package is importable
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-# pydantic-settings may emit an IncompleteFieldDefinitionWarning for FastMCP's
-# internal "lifespan" field forward ref on some dependency combinations. This
-# is upstream and does not affect runtime behavior for this server.
-try:
-    from pydantic_settings.sources.utils import IncompleteFieldDefinitionWarning
-except ImportError:
-    IncompleteFieldDefinitionWarning = None
-
-if IncompleteFieldDefinitionWarning is not None:
+def _suppress_fastmcp_lifespan_warning() -> None:
+    """Suppress known upstream pydantic-settings warning from FastMCP internals."""
     warnings.filterwarnings(
         "ignore",
-        message=r".*Field 'lifespan' has an incomplete definition.*",
+        message=r".*lifespan.*incomplete definition.*",
+        module=r"pydantic_settings\.sources\.utils",
+    )
+    try:
+        from pydantic_settings.sources.utils import IncompleteFieldDefinitionWarning
+    except ImportError:
+        return
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*lifespan.*incomplete definition.*",
         category=IncompleteFieldDefinitionWarning,
     )
+
+
+_suppress_fastmcp_lifespan_warning()
 
 from mcp.server.fastmcp import FastMCP
 
