@@ -97,9 +97,6 @@ def _run_inline() -> None:
         _handle_add_pattern(args, config, loader, console)
         return
 
-    store = ChromaStore(config.storage)
-    store.connect()
-
     # --- --convert-pdfs: standalone conversion, no embeddings needed ---
     if args.convert_pdfs:
         _handle_convert_pdfs(args, config, console)
@@ -110,6 +107,9 @@ def _run_inline() -> None:
         _handle_estimate(args, config, console)
         return
 
+    store = ChromaStore(config.storage)
+    store.connect()
+    
     embedding_gen = EmbeddingGenerator(config.embedding.model, config.embedding.query_instruction)
     embedding_gen.load()
 

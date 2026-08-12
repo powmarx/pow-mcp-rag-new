@@ -1,0 +1,1 @@
+"""Setup and maintenance scripts for pow-mcp-rag-new."""

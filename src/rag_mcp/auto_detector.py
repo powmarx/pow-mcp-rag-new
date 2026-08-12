@@ -19,27 +19,9 @@ class DetectedSource:
     description: str
 
 
-def _resolve_default_rules_path() -> Path:
-    """
-    Locate detection_rules.json: prefer bundled package data (installed
-    wheel/sdist via pip/uvx), fall back to the repo's config/ folder
-    (editable install / repo checkout). Mirrors the resolution used for
-    server_info.json in _server.py.
-    """
-    here = Path(__file__).parent
-    candidates = [
-        here / "data" / "detection_rules.json",
-        here.parent.parent.parent / "config" / "detection_rules.json",
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-    # Neither found — return the packaged-data path so the missing-file
-    # error message points somewhere meaningful instead of silently
-    # falling back to empty rules.
-    return candidates[0]
+from rag_mcp.paths import resolve_package_data_file
 
-_DEFAULT_RULES_PATH = _resolve_default_rules_path()
+_DEFAULT_RULES_PATH = resolve_package_data_file("detection_rules.json")
 
 
 class ProjectAutoDetector:

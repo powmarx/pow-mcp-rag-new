@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pow-rag-mcp"
-version = "1.2.0"
+version = "1.2.1"
 description = "Local RAG MCP server for code and documentation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,9 +44,11 @@ dev = [
 
 [project.scripts]
 rag-mcp = "rag_mcp.cli:main"
+discover = "scripts.setup_discover:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["rag_mcp*", "scripts*"]
 
 # Bundle the config templates and metadata inside the wheel itself (not just
 # the sdist via MANIFEST.in) so `pip install`/`uvx` installs can seed a real

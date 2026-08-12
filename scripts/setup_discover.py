@@ -18,9 +18,11 @@ from pathlib import Path
 # Add src/ to path (this script lives in scripts/, so go up to the project root)
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+
+
 from rag_mcp.config_loader import ConfigLoader, ProjectConfig
 from rag_mcp.source_scanner import build_source_patterns
-
+from rag_mcp.paths import resolve_package_data_file
 
 def main():
     import argparse
@@ -47,10 +49,12 @@ def main():
         print(f"Error: PROJECTS_ROOT does not exist: {projects_root}", file=sys.stderr)
         sys.exit(1)
 
-    script_dir = Path(__file__).parent.parent  # scripts/ -> project root
-    config_path = Path(args.config) if args.config else (script_dir / "config" / "config.yaml")
-    this_repo_name = script_dir.name
-    template_path = script_dir / "config" / "config.template.yaml"
+    # template_path resolves the bundled config.template.yaml regardless of
+    # whether this script runs from a repo checkout or an installed package
+    # (pip/uvx/Docker) — see rag_mcp.paths.resolve_package_data_file.
+    template_path = resolve_package_data_file("config.template.yaml")
+    config_path = Path(args.config) if args.config else (template_path.parent.parent / "config" / "config.yaml")
+    this_repo_name = Path(__file__).parent.parent.name
 
     # Seed the target config from the template if it doesn't exist yet
     # (skipped in --list mode: merely listing folders shouldn't create files).

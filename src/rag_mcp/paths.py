@@ -101,17 +101,12 @@ def _seed_config(target: Path) -> None:
     #      package (wheel/sdist via [tool.setuptools.package-data]; kept in
     #      sync with config/ by scripts/sync_package_data.py before each build)
     #   2. <repo>/config/config.template.yaml  — repo checkout / editable install
-    here = Path(__file__).parent
-    candidates = [
-        here / "data" / "config.template.yaml",                  # installed package data
-        here.parent.parent / "config" / "config.template.yaml",  # repo / editable install
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            shutil.copy(candidate, target)
-            print(f"[config] Created config at {target}", file=sys.stderr)
-            print(f"[config] Edit it to add your projects, then run: rag-mcp index", file=sys.stderr)
-            return
+    template = resolve_package_data_file("config.template.yaml")
+    if template.exists():
+        shutil.copy(template, target)
+        print(f"[config] Created config at {target}", file=sys.stderr)
+        print(f"[config] Edit it to add your projects, then run: rag-mcp index", file=sys.stderr)
+        return
 
     # No template found — create minimal stub so the app can start.
     # Kept in sync with config_loader.py's EmbeddingConfig/RerankerConfig
@@ -126,3 +121,29 @@ def _seed_config(target: Path) -> None:
         encoding="utf-8",
     )
     print(f"[config] WARNING: bundled template not found, created minimal stub at {target}", file=sys.stderr)
+
+def resolve_package_data_file(relative_name: str) -> Path:
+    """
+    Locate a bundled data file by name, e.g. "config.template.yaml" or
+    "detection_rules.json". Priority:
+      1. Installed package data: rag_mcp/data/<relative_name>
+         (works for pip/uvx installs, Docker, and any entry point — resolved
+         via import, not directory-counting, so it's correct regardless of
+         where the caller script itself lives on disk)
+      2. Repo checkout fallback: <repo_root>/config/<relative_name>
+         (only reachable if this file itself is running from src/rag_mcp/,
+         i.e. editable install / repo checkout)
+
+    Returns the first candidate that exists, or the first candidate
+    (installed-package path) if neither exists, so error messages point
+    somewhere meaningful.
+    """
+    here = Path(__file__).parent  # src/rag_mcp/
+    candidates = [
+        here / "data" / relative_name,
+        here.parent.parent / "config" / relative_name,  # src/rag_mcp -> src -> repo root
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]
