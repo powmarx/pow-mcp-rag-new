@@ -111,7 +111,7 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
                         "file_path": meta.get("file_path", "unknown"),
                         "project": meta.get("project", "unknown"),
                         "file_type": meta.get("file_type", "unknown"),
-                        "relevance": round(1 - distance, 4),
+                        "relevance": round(max(0.0, min(1.0, 1 - distance)), 4),
                         "description": meta.get("source_description", ""),
                     }
                 )

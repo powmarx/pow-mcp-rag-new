@@ -46,8 +46,12 @@ class EmbeddingGenerator:
         """
         if not self.model:
             raise RuntimeError("Model not loaded. Call load() first.")
-        return self.model.encode(texts, batch_size=batch_size, show_progress_bar=False).tolist()
-
+        return self.model.encode(
+            texts,
+            batch_size=batch_size,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        ).tolist()
     def encode_query(self, query: str) -> list[float]:
         """Encode a single query string. Applies the query instruction prefix
         (if configured) — this must NOT be applied to indexed documents."""

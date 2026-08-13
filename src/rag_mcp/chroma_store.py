@@ -36,7 +36,10 @@ class ChromaStore:
         collection_name = self._collection_name(project_name)
         return self.client.get_or_create_collection(
             name=collection_name,
-            metadata={"description": description},
+            metadata={
+                "description": description,
+                "hnsw:space": "cosine",
+            },        
         )
 
     def get_collection(self, project_name: str):
