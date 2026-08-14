@@ -32,6 +32,7 @@ from rag_mcp.embedding_generator import EmbeddingGenerator
 from rag_mcp.file_reader import FileReader
 from rag_mcp.indexing_pipeline import IndexingPipeline
 from rag_mcp.pdf_converter import PDFConverter
+from rag_mcp.source_scanner import build_index_extension_patterns
 
 # Config path: RAG_CONFIG_PATH env override (used by Docker to read the config
 # from the data volume), else config.yaml next to this script.
@@ -153,6 +154,13 @@ def handle_add_project(args):
         console.print(f"[red]Error: Path does not exist: {project_path}[/red]")
         sys.exit(1)
 
+    loader = ConfigLoader(CONFIG_PATH)
+    try:
+        config = loader.load()
+    except FileNotFoundError:
+        console.print(f"[red]Error: Config file not found: {CONFIG_PATH}[/red]")
+        sys.exit(1)
+
     console.print(f"[bold green]Auto-detecting project structure[/bold green]")
     console.print(f"  Name: {args.name}")
     console.print(f"  Path: {project_path}\n")
@@ -160,16 +168,16 @@ def handle_add_project(args):
     # Run auto-detection
     detector = ProjectAutoDetector()
     detected = detector.detect(project_path)
-
-    if not detected:
-        console.print("[yellow]No recognizable patterns detected. Adding empty project entry.[/yellow]")
-        console.print("Edit config.yaml manually to add source patterns.\n")
-
-    # Build project config
     sources = [
         SourcePattern(pattern=d.pattern, type=d.type, description=d.description)
         for d in detected
     ]
+    if not sources:
+        console.print(
+            "[yellow]No recognizable patterns detected. Falling back to configured index_extensions.[/yellow]"
+        )
+        sources = build_index_extension_patterns(config)
+
     new_project = ProjectConfig(
         name=args.name,
         description=f"Auto-detected project at {project_path.name}",
@@ -181,14 +189,6 @@ def handle_add_project(args):
     console.print("[cyan]Detected source patterns:[/cyan]")
     for src in sources:
         console.print(f"  [{src.type}] {src.pattern} — {src.description}")
-
-    # Load existing config and append
-    loader = ConfigLoader(CONFIG_PATH)
-    try:
-        config = loader.load()
-    except FileNotFoundError:
-        console.print(f"[red]Error: Config file not found: {CONFIG_PATH}[/red]")
-        sys.exit(1)
 
     # Check for duplicate name
     existing_names = {p.name for p in config.projects}
