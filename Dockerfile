@@ -21,8 +21,8 @@ FROM python:3.13-slim AS builder
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/opt/hf-cache \
-    EMBED_MODEL=BAAI/bge-small-en-v1.5 \
-    RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+    EMBED_MODEL=BAAI/bge-m3 \
+    RERANK_MODEL=BAAI/bge-reranker-v2-m3
 
 WORKDIR /build
 
@@ -48,8 +48,8 @@ ENV PYTHONUNBUFFERED=1 \
     HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1 \
     RAG_CONFIG_PATH=/app/data/config.yaml \
-    EMBED_MODEL=BAAI/bge-small-en-v1.5 \
-    RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+    EMBED_MODEL=BAAI/bge-m3 \
+    RERANK_MODEL=BAAI/bge-reranker-v2-m3
 
 WORKDIR /app
 
