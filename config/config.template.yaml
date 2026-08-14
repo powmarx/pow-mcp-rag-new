@@ -4,7 +4,7 @@
 
 # Embedding model configuration
 embedding:
-  model: "BAAI/bge-small-en-v1.5"
+  model: "BAAI/bge-m3"
 
 # Cross-encoder reranking: reorders the top vector-search candidates using a
 # more accurate (but slower) model that scores the query and document jointly.
@@ -12,7 +12,7 @@ embedding:
 # candidates.
 reranker:
   enabled: true
-  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  model: "BAAI/bge-reranker-v2-m3"
   overfetch_factor: 4
 
 # ChromaDB storage (relative to this file)
