@@ -29,6 +29,7 @@ set "SERVER_NAME="
 set "SRC_ARG="
 set "REPO_ARG="
 set "IMAGE_ARG="
+set "NO_CACHE="
 :parse_args
 if "%~1"=="" goto end_parse
 if /i "%~1"=="--server-name" (
@@ -51,6 +52,12 @@ if /i "%~1"=="--repo" (
 )
 if /i "%~1"=="--image" (
     set "IMAGE_ARG=%~2"
+    shift /1
+    shift /1
+    goto parse_args
+)
+if /i "%~1"=="--no-cache" (
+    set "NO_CACHE=%~2"
     shift /1
     shift /1
     goto parse_args
@@ -113,7 +120,12 @@ if errorlevel 1 (
 )
 
 echo [1/4] Building image %IMAGE_TAG% ...
-docker build -t %IMAGE_TAG% "%REPO_PATH%"
+if not "%NO_CACHE%"=="" (
+    echo WARNING: No cache build activated.
+    docker build --no-cache -t %IMAGE_TAG% "%REPO_PATH%"
+) else (
+      docker build -t %IMAGE_TAG% "%REPO_PATH%"
+)
 if errorlevel 1 (
     echo ERROR: Docker build failed.
     pause
