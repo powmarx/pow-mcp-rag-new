@@ -106,7 +106,13 @@ def _run_inline() -> None:
     store.connect()
 
     embedding_gen = EmbeddingGenerator(config.embedding.model, config.embedding.query_instruction)
+    print(f"[startup] Embedding model configured: {config.embedding.model} (lazy load)", file=sys.stderr)
+
     reranker = Reranker(config.reranker.model) if config.reranker.enabled else None
+    if reranker:
+        print(f"[startup] Reranker configured: {config.reranker.model} (lazy load)", file=sys.stderr)
+    else:
+        print("[startup] Reranker disabled", file=sys.stderr)
 
     # Lock to prevent concurrent embedding model access/loading (model is not
     # thread-safe, and without this two first-time tool calls can race to

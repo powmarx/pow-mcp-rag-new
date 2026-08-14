@@ -4,6 +4,8 @@ import time
 
 import anyio
 
+import math
+
 from rag_mcp.tools import ToolContext
 from rag_mcp.tools.helpers import extract_snippet, log_tool_call
 
@@ -126,7 +128,9 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
             _ctx.ensure_reranker_loaded()
             scores = _ctx.reranker.rerank(query, [r["content"] for r in results])
             for r, score in zip(results, scores):
-                r["relevance"] = round(float(score), 4)
+                # sigmoid → [0,1]; BAAI/bge-reranker-v2-m3 and similar models
+                # return unbounded logits, not probabilities.
+                r["relevance"] = round(1 / (1 + math.exp(-float(score))), 4)
             results.sort(key=lambda x: x["relevance"], reverse=True)
         except Exception as e:
             # Reranking is a best-effort enhancement — fall back to bi-encoder
