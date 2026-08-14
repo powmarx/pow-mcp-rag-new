@@ -12,6 +12,7 @@ REM   setup-docker.bat --src D:\SomeOtherFolder
 REM   setup-docker.bat --repo D:\GitHub\pow-mcp-rag-new
 REM   setup-docker.bat --image my-rag
 REM   setup-docker.bat --server-name my-rag --src D:\Projects --image my-rag
+REM   setup-docker.bta --no-cache
 REM
 REM Env var fallbacks (used only if the matching flag isn't passed):
 REM   set SRC=D:\SomeOtherFolder
