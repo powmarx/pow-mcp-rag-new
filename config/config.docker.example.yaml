@@ -6,11 +6,12 @@
 #   -v C:/GIT:/projects:ro
 
 embedding:
-  model: "BAAI/bge-small-en-v1.5"
-
+  model: "BAAI/bge-m3"
+  query_instruction: ""
+  
 reranker:
   enabled: true
-  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  model: "BAAI/bge-reranker-v2-m3"
   overfetch_factor: 4
 
 # Relative to server.py's directory -> /app/data (mount this as a volume).

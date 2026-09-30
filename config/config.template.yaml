@@ -5,7 +5,8 @@
 # Embedding model configuration
 embedding:
   model: "BAAI/bge-m3"
-
+  query_instruction: ""
+  
 # Cross-encoder reranking: reorders the top vector-search candidates using a
 # more accurate (but slower) model that scores the query and document jointly.
 # No reindex required — operates purely at query time on already-retrieved
