@@ -154,6 +154,7 @@ def _handle_add_project(args, config, loader, console) -> None:
     (does not index — mirrors indexer.py's handle_add_project)."""
     from rag_mcp.auto_detector import ProjectAutoDetector
     from rag_mcp.config_loader import ProjectConfig, SourcePattern
+    from rag_mcp.source_scanner import build_index_extension_patterns
 
     if not args.name:
         console.print("[red]Error: --name is required with --add-project[/red]")
@@ -171,10 +172,12 @@ def _handle_add_project(args, config, loader, console) -> None:
 
     detector = ProjectAutoDetector()
     detected = detector.detect(project_path)
-    if not detected:
-        console.print("[yellow]No recognizable patterns detected. Adding empty project entry.[/yellow]")
-
     sources = [SourcePattern(pattern=d.pattern, type=d.type, description=d.description) for d in detected]
+    if not sources:
+        console.print(
+            "[yellow]No recognizable patterns detected. Falling back to configured index_extensions.[/yellow]"
+        )
+        sources = build_index_extension_patterns(config)
     new_project = ProjectConfig(
         name=args.name,
         description=f"Auto-detected project at {project_path.name}",

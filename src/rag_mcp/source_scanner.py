@@ -13,6 +13,20 @@ from pathlib import Path
 from rag_mcp.config_loader import AppConfig, SourcePattern
 
 
+def build_index_extension_patterns(config: AppConfig) -> list[SourcePattern]:
+    """
+    Build one recursive ``**/*.ext`` source pattern per configured index extension.
+    """
+    return [
+        SourcePattern(
+            pattern=f"**/*{ie.ext}",
+            type=ie.type,
+            description=ie.description,
+        )
+        for ie in config.index_extensions
+    ]
+
+
 def build_source_patterns(root: Path, config: AppConfig) -> list[SourcePattern]:
     """
     Walk ``root`` and return recursive source patterns for the configured file
@@ -40,8 +54,8 @@ def build_source_patterns(root: Path, config: AppConfig) -> list[SourcePattern]:
     if ".pdf" in present and ".md" in wanted:
         present.add(".md")
 
-    sources: list[SourcePattern] = []
-    for ie in config.index_extensions:  # preserve configured order
-        if ie.ext in present:
-            sources.append(SourcePattern(pattern=f"**/*{ie.ext}", type=ie.type, description=ie.description))
-    return sources
+    return [
+        src
+        for ie, src in zip(config.index_extensions, build_index_extension_patterns(config))
+        if ie.ext in present
+    ]
