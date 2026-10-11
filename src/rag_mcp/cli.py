@@ -10,6 +10,7 @@ Usage:
     rag-mcp index --reset        # clear + full re-index
     rag-mcp index --prune        # remove stale chunks
     rag-mcp index --estimate     # dry-run size estimate
+    rag-mcp index --list-projects # list indexed projects and chunk counts
     rag-mcp config               # show resolved config path
     rag-mcp config --init        # seed config from template and exit
     rag-mcp docs                 # list bundled docs

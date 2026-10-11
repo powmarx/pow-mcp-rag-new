@@ -59,6 +59,7 @@ rag-mcp index --reset --project NAME       # clear + full re-index (one project)
 rag-mcp index --prune                      # remove chunks for files deleted from disk
 rag-mcp index --estimate                   # dry run: estimate chunks/DB size, no writes
 rag-mcp index --estimate --project NAME    # dry run for one project
+rag-mcp index --list-projects                # list indexed projects and chunk counts (read-only)
 rag-mcp index --convert-pdfs               # convert PDFs to Markdown for all projects
 rag-mcp index --convert-pdfs --project NAME
 rag-mcp index --convert-pdfs --path DIR    # convert PDFs in an arbitrary directory
@@ -73,6 +74,7 @@ rag-mcp index --add-pattern --project NAME --pattern GLOB [--type TYPE] [--descr
 | `--reset` | Delete the project's existing ChromaDB collection before indexing (full re-index instead of incremental). |
 | `--prune` | Remove indexed chunks whose source file no longer exists on disk. Does not add or update anything. |
 | `--estimate` | Scan and chunk files (no embeddings, no writes) to report file count, estimated chunk count, and projected DB size per project and in total. |
+| `--list-projects` | List indexed projects with description and indexed chunk count, then exit. Read-only; same output as the `list_projects` MCP tool. Loads no embedding model and ignores other flags. |
 | `--convert-pdfs` | Convert PDF sources to Markdown ahead of indexing (normally done automatically, on demand, during indexing — this flag runs it standalone). Combine with `--project` to scope to one project, or `--path DIR` to convert an arbitrary directory instead of a configured project. |
 | `--add-project` | Auto-detect the tech stack/file layout under `--path` (or the current directory if omitted) and append a new project entry to `config.yaml`. Requires `--name`. Does not index — run `rag-mcp index --project NAME` afterward. |
 | `--add-folder` | Index all files matching `--pattern` (default `**/*`) inside `--path` into the existing project named by `--project`, and persist the resulting pattern in `config.yaml` for future re-indexing. `--path` must be inside that project's `base_path`. Indexes immediately (unlike `--add-project`). |
@@ -87,7 +89,7 @@ rag-mcp index --add-pattern --project NAME --pattern GLOB [--type TYPE] [--descr
 > `--convert-pdfs --path` are only available when running from the repo checkout
 > (`python indexer.py ...`) or an editable install. In a real pip/uvx/`uv tool install` package
 > with no `indexer.py` file on disk, the CLI falls back to an inline implementation that
-> supports `--project`, `--reset`, `--prune`, and `--estimate` only. To add a project, folder, or
+> supports `--project`, `--reset`, `--prune`, `--estimate`, and `--list-projects` only. To add a project, folder, or
 > pattern from a pure package install, use the equivalent MCP tools instead (`add_project`,
 > `add_folder`, `add_pattern` — see [TOOLS_GUIDE.md](TOOLS_GUIDE.md) / `rag-mcp docs
 > tools`), which work identically regardless of install mode since they go through the running
