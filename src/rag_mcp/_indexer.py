@@ -38,7 +38,7 @@ def _run_inline() -> None:
     """Inline indexer startup — used when indexer.py is not found on disk
     (real pip/uvx/uv-tool-install packages). Mirrors indexer.py's CLI
     surface (--add-project, --add-folder, --add-pattern, --convert-pdfs,
-    --estimate, --prune) so behavior doesn't depend on install mode.
+    --estimate, --prune, --list-projects) so behavior doesn't depend on install mode.
     """
     import argparse
     import os
@@ -74,6 +74,7 @@ def _run_inline() -> None:
     parser.add_argument("--pattern", type=str, default="**/*", help="Glob pattern (for --add-folder, relative to --path; or --add-pattern, relative to project base_path)")
     parser.add_argument("--type", type=str, default="documentation", choices=["source", "header", "documentation", "config"], help="File type classification (for --add-pattern; default: documentation)")
     parser.add_argument("--description", type=str, default="", help="Description for the new source entry (for --add-pattern)")
+    parser.add_argument("--list-projects", action="store_true", help="List indexed projects and their statistics (same output as the list_projects MCP tool)")
     args = parser.parse_args()
 
     loader = ConfigLoader(config_path)
@@ -83,6 +84,11 @@ def _run_inline() -> None:
     if not Path(config.storage.path).is_absolute():
         config.storage.path = str(data_path)
         data_path.mkdir(parents=True, exist_ok=True)
+
+    # --- --list-projects: read-only, reuses the list_projects MCP tool ---
+    if args.list_projects:
+        _handle_list_projects(config, loader)
+        return
 
     # --- --add-project: just registers the project in config, no indexing ---
     if args.add_project:
@@ -147,6 +153,27 @@ def _run_inline() -> None:
         console.print(f"[green]Done[/green] {project.name}: {chunks} chunks")
 
     console.print(f"\n[bold green]Indexing complete! Total: {total_chunks} chunks[/bold green]")
+
+
+def _handle_list_projects(config, loader) -> None:
+    """Print indexed projects and stats (reuses the list_projects MCP tool)."""
+    from rag_mcp.chroma_store import ChromaStore
+    from rag_mcp.tools import ToolContext, documents
+
+    store = ChromaStore(config.storage)
+    store.connect()
+
+    documents._ctx = ToolContext(
+        config=config,
+        loader=loader,
+        store=store,
+        embedding_gen=None,
+        ensure_model_loaded=lambda: None,
+        reindex_in_progress=lambda: False,
+        indexing_cancelled=lambda: False,
+        set_indexing_cancelled=lambda v: None,
+    )
+    print(documents.list_projects())
 
 
 def _handle_add_project(args, config, loader, console) -> None:

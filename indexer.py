@@ -9,6 +9,7 @@ Usage:
     python indexer.py --project NAME           # Index a specific project
     python indexer.py --reset                  # Clear and re-index everything
     python indexer.py --prune                  # Remove chunks for deleted files
+    python indexer.py --list-projects          # List indexed projects and chunk counts
     python indexer.py --add-project --name NAME --path PATH        # Add a new project
     python indexer.py --add-folder --project NAME --path DIR [--pattern GLOB]  # Add a folder to an existing project
     python indexer.py --add-pattern --project NAME --pattern GLOB [--type TYPE] [--description DESC]  # Add a pattern to an existing project
@@ -57,7 +58,12 @@ def main():
     parser.add_argument("--pattern", type=str, default="**/*", help="Glob pattern (for --add-folder, relative to --path; or --add-pattern, relative to project base_path)")
     parser.add_argument("--type", type=str, default="documentation", choices=["source", "header", "documentation", "config"], help="File type classification (for --add-pattern; default: documentation)")
     parser.add_argument("--description", type=str, default="", help="Description for the new source entry (for --add-pattern)")
+    parser.add_argument("--list-projects", action="store_true", help="List indexed projects and their statistics (same output as the list_projects MCP tool)")
     args = parser.parse_args()
+
+    # Handle --list-projects separately
+    if args.list_projects:
+        return handle_list_projects(args)
 
     # Handle --add-project separately
     if args.add_project:
@@ -139,6 +145,33 @@ def main():
         total_chunks += chunks
 
     console.print(f"\n[bold green]Indexing complete! Total: {total_chunks} chunks[/bold green]")
+
+
+def handle_list_projects(args):
+    """Handle the --list-projects command. Reuses the list_projects MCP tool."""
+    from rag_mcp.tools import ToolContext, documents
+
+    loader = ConfigLoader(CONFIG_PATH)
+    try:
+        config = loader.load()
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[red]Error loading config: {e}[/red]")
+        sys.exit(1)
+
+    store = ChromaStore(config.storage)
+    store.connect()
+
+    documents._ctx = ToolContext(
+        config=config,
+        loader=loader,
+        store=store,
+        embedding_gen=None,
+        ensure_model_loaded=lambda: None,
+        reindex_in_progress=lambda: False,
+        indexing_cancelled=lambda: False,
+        set_indexing_cancelled=lambda v: None,
+    )
+    print(documents.list_projects())
 
 
 def handle_add_project(args):
