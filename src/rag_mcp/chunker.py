@@ -10,8 +10,10 @@ Guarantees
   ``chunk_overlap=0`` the chunks partition the input exactly, so concatenating
   them reproduces the original text byte-for-byte. This matters for source
   code, where stripping indentation or collapsing blank lines changes meaning.
-* Bounded: no chunk exceeds ``chunk_size`` (plus ``chunk_overlap`` when
-  overlap is enabled).
+* Bounded: no chunk exceeds ``chunk_size``. Overlap is *included* in that
+  limit: each chunk after the first begins with up to ``chunk_overlap``
+  characters from the end of the previous chunk (snapped to a line or word
+  boundary), shrunk when a piece leaves less room.
 * Word-safe: a long line that no separator can break is cut at whitespace or
   punctuation; a hard mid-token cut happens only when no boundary exists at
   all (e.g. a base64 blob).
@@ -53,6 +55,12 @@ class Chunker:
         self.chunk_size = config.chunk_size
         self.chunk_overlap = config.chunk_overlap
         self.separators = config.separators
+        # Target size for fragments of text that must be force-split (long
+        # lines, re-flowed runs). Leaves room for the overlap a chunk carries,
+        # but never drops below half a chunk for degenerate overlap settings.
+        self.fragment_size = max(
+            self.chunk_size - self.chunk_overlap, (self.chunk_size + 1) // 2
+        )
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -75,12 +83,9 @@ class Chunker:
         # no whitespace is ever dropped or altered.
         spans = self._recursive_split(text, 0, len(text), 0)
 
-        # Pack pieces into chunks (heading-aware, re-flows long lines)
-        spans = self._merge_small_spans(text, spans)
-
-        # Apply overlap
-        if self.chunk_overlap > 0 and len(spans) > 1:
-            spans = self._apply_overlap(text, spans)
+        # Pack pieces into chunks (heading-aware, re-flows long lines,
+        # carries overlap from the previous chunk within chunk_size)
+        spans = self._pack_spans(text, spans)
 
         # Build Chunk objects
         total = len(spans)
@@ -155,28 +160,35 @@ class Chunker:
 
     def _force_split(self, text: str, start: int, end: int) -> list[Span]:
         """
-        Split text[start:end] into pieces of at most chunk_size.
+        Split text[start:end] into fragments of at most fragment_size.
 
         Used when no separator could break the text (e.g. one very long line)
-        and to re-split a span that grew past chunk_size. Pieces are balanced
-        (a 301-char line becomes ~150 + ~151, not 300 + 1), cut at the best
-        available boundary, and never whitespace-only — except when a
-        whitespace run is itself longer than chunk_size.
+        and to re-split a span that grew past chunk_size. Fragments are
+        balanced (a 301-char line becomes ~150 + ~151, not 300 + 1), cut at
+        the best available boundary, and never whitespace-only — except when
+        a whitespace run is itself longer than chunk_size. A fragment may
+        exceed fragment_size (up to chunk_size) only when no clean cut exists
+        within the unit.
         """
+        unit = self.fragment_size
         spans: list[Span] = []
         while start < end:
             remaining = end - start
             # Remaining text fits entirely
-            if remaining <= self.chunk_size:
+            if remaining <= unit:
                 spans.append((start, end))
                 break
 
-            pieces = -(-remaining // self.chunk_size)  # ceil
+            cut = None
+            pieces = -(-remaining // unit)  # ceil
             target = -(-remaining // pieces)
-            # Don't cut so early that the rest can't be done in pieces-1 chunks
-            lo = max(start, end - (pieces - 1) * self.chunk_size)
-            cut = self._split_to_fit(text, lo, end, start + target - lo)
+            # Don't cut so early that the rest can't fit in pieces-1 units
+            lo = max(start, end - (pieces - 1) * unit)
+            if start + target > lo:
+                cut = self._split_to_fit(text, lo, end, start + target - lo)
             if cut is None:
+                # No clean cut within the unit: allow the full chunk_size
+                # (giving up overlap room) before cutting mid-token.
                 cut = self._split_to_fit(text, start, end, self.chunk_size, forced=True)
             if cut is None:
                 # Pathological: a whitespace run longer than chunk_size.
@@ -285,6 +297,16 @@ class Chunker:
         line_start = max(start, text.rfind("\n", start, content_end) + 1)
         return self._section_level(text, line_start) is not None
 
+    def _last_heading_start(self, text: str, start: int, end: int) -> int | None:
+        """Start offset of the last section-heading line in text[start:end]."""
+        pos = end
+        while pos > start:
+            line_start = max(start, text.rfind("\n", start, pos - 1) + 1)
+            if self._section_level(text, line_start) is not None:
+                return line_start
+            pos = line_start
+        return None
+
     @staticmethod
     def _section_end(spans: list[Span], levels: list[int | None], i: int) -> int:
         """
@@ -315,7 +337,10 @@ class Chunker:
                 not text[s:e].strip() or not text[folded[-1][0] : folded[-1][1]].strip()
             ):
                 prev_start, _ = folded.pop()
-                folded.extend(self._force_split(text, prev_start, e))
+                if e - prev_start > self.chunk_size:
+                    folded.extend(self._force_split(text, prev_start, e))
+                else:
+                    folded.append((prev_start, e))
             else:
                 folded.append((s, e))
         return folded
@@ -333,42 +358,102 @@ class Chunker:
         return spans[j][1]
 
     def _reflow_cut(
-        self, text: str, cur_start: int, piece_end: int, run_end: int
+        self, text: str, cur_start: int, cur_end: int, piece_end: int, run_end: int
     ) -> int | None:
         """
         Choose where to end the current chunk when the next piece won't fit.
 
-        Balances [cur_start, run_end) over the minimum number of chunks so the
-        split produces even pieces instead of a full chunk plus a tiny tail.
-        The cut lies in [cur_start, cur_start + chunk_size] and leaves a
-        remainder [cut, piece_end) of at most chunk_size. Returns None if no
-        clean boundary exists. A cut that would end the chunk on a bare
-        heading is rejected and retried further right.
+        Balances [cur_start, run_end) over the minimum number of fragments so
+        the split produces even pieces instead of a full chunk plus a tiny
+        tail, leaving each following chunk room for its overlap. The cut lies
+        in (cur_start, cur_start + chunk_size] and leaves a remainder
+        [cut, piece_end) of at most fragment_size — or, as a last resort,
+        fills the current chunk up to chunk_size without moving its end
+        backwards. Returns None if no clean boundary exists. A cut before the
+        last heading in the chunk, or one that would end the chunk on a bare
+        heading, is rejected and retried further right.
         """
         cs = self.chunk_size
+        unit = self.fragment_size
         total = run_end - cur_start
-        pieces = max(2, -(-total // cs))
-        target = -(-total // pieces)
 
+        attempts: list[tuple[int, int]] = []
+        base = max(2, -(-total // unit))
+        for pieces in (base, base + 1):
+            target = -(-total // pieces)
+            lo = max(piece_end - unit, run_end - (pieces - 1) * unit)
+            attempts.append((lo, cur_start + target))
+        # Last resort: fill the current chunk. (Clamped so it never moves the
+        # chunk end backwards; in practice the chunk always ends right after
+        # a boundary, so the clamp is a safety net.)
+        attempts.append((max(piece_end - cs, cur_end), cur_start + cs))
+
+        # Cuts at or before `lower` are rejected: never cut before the last
+        # heading the chunk holds (it was merged to keep it with its body),
+        # and never end the chunk on a bare heading.
         lower = cur_start
-        while True:
-            lo = max(lower, piece_end - cs, run_end - (pieces - 1) * cs)
-            cut = None
-            for hi in (cur_start + target, cur_start + cs):
-                if hi > lo:
-                    cut = self._split_to_fit(text, lo, piece_end, hi - lo)
-                if cut is not None:
+        last_heading = self._last_heading_start(text, cur_start, cur_end)
+        if last_heading is not None:
+            lower = last_heading
+        for lo, hi in attempts:
+            while True:
+                lo = max(lo, lower)
+                if hi <= lo:
                     break
-            if cut is None:
-                return None
-            if self._ends_with_bare_heading(text, cur_start, cut):
-                lower = cut
-                continue
-            return cut
+                cut = self._split_to_fit(text, lo, piece_end, hi - lo)
+                if cut is None:
+                    break
+                if self._ends_with_bare_heading(text, cur_start, cut):
+                    lower = cut
+                    continue
+                return cut
+        return None
 
-    def _merge_small_spans(self, text: str, spans: list[Span]) -> list[Span]:
+    def _overlap_start(
+        self, text: str, prev_start: int, boundary: int, room: int
+    ) -> int:
+        """
+        Start offset for a new chunk whose own text begins at `boundary`.
+
+        Reaches back up to chunk_overlap characters into the previous chunk
+        (never more than `room`), then snaps forward to a line start, else a
+        word start, so the chunk remains a clean substring. The previous
+        chunk always keeps at least its first line or word to itself, so no
+        chunk is ever entirely contained in the next one. Returns `boundary`
+        when no overlap is possible.
+        """
+        reach = min(self.chunk_overlap, room)
+        if reach <= 0:
+            return boundary
+        tail_start = max(prev_start + 1, boundary - reach)
+        if tail_start >= boundary:
+            return boundary
+
+        # Unless already at a line start, snap forward to a clean break point
+        # that still leaves content after it.
+        if tail_start > 0 and text[tail_start - 1] != "\n":
+            tail = text[tail_start:boundary]
+            content_len = len(tail.rstrip())
+            break_point = tail.find("\n", 0, content_len - 1)
+            if break_point == -1:
+                break_point = next(
+                    (i for i in range(content_len - 1) if tail[i].isspace()), -1
+                )
+            if break_point == -1:
+                return boundary
+            tail_start += break_point + 1
+
+        if not text[tail_start:boundary].strip():
+            return boundary
+        return tail_start
+
+    def _pack_spans(self, text: str, spans: list[Span]) -> list[Span]:
         """
         Pack adjacent spans into chunks that fit within chunk_size.
+
+        Each chunk after the first starts with the overlap tail of the
+        previous chunk; the tail counts toward chunk_size, so the limit is
+        never exceeded (the overlap shrinks instead).
 
         Rules that keep section headings attached to their content and avoid
         tiny fragments:
@@ -399,6 +484,15 @@ class Chunker:
         merged: list[Span] = []
         cur_start, cur_end = spans[0]
 
+        def flush_and_start(boundary: int, piece_end: int) -> None:
+            """Emit [cur_start, boundary); start a new chunk at `boundary`
+            with as much overlap as fits alongside [boundary, piece_end)."""
+            nonlocal cur_start, cur_end
+            merged.append((cur_start, boundary))
+            room = self.chunk_size - (piece_end - boundary)
+            cur_start = self._overlap_start(text, cur_start, boundary, room)
+            cur_end = piece_end
+
         for i in range(1, len(spans)):
             s, e = spans[i]
             is_heading = levels[i] is not None
@@ -418,55 +512,12 @@ class Chunker:
             mid_line = text[cur_end - 1] != "\n"
             if bare or mid_line or (is_heading and cur_small):
                 run_end = self._run_end(text, spans, i)
-                cut = self._reflow_cut(text, cur_start, e, run_end)
+                cut = self._reflow_cut(text, cur_start, cur_end, e, run_end)
                 if cut is not None:
-                    merged.append((cur_start, cut))
-                    cur_start, cur_end = cut, e
+                    flush_and_start(cut, e)
                     continue
 
-            merged.append((cur_start, cur_end))
-            cur_start, cur_end = s, e
+            flush_and_start(s, e)
 
         merged.append((cur_start, cur_end))
         return merged
-
-    # ------------------------------------------------------------------ #
-    # Overlap
-    # ------------------------------------------------------------------ #
-
-    def _apply_overlap(self, text: str, spans: list[Span]) -> list[Span]:
-        """
-        Extend each span (after the first) backward into the previous one.
-
-        The overlap starts at a clean boundary (line start, else word start)
-        so the chunk remains an exact, readable substring of the source.
-        """
-        if len(spans) <= 1:
-            return spans
-
-        overlapped = [spans[0]]
-        for i in range(1, len(spans)):
-            start, end = spans[i]
-            prev_start = spans[i - 1][0]
-            tail_start = max(prev_start, start - self.chunk_overlap)
-
-            # Unless already at a line start, snap forward to a clean break
-            # point (newline, else whitespace). If there is none, skip the
-            # overlap rather than start mid-token.
-            if tail_start > 0 and text[tail_start - 1] != "\n":
-                tail = text[tail_start:start]
-                # Only consider boundaries that leave content after them.
-                content_len = len(tail.rstrip())
-                break_point = tail.find("\n", 0, content_len - 1)
-                if break_point == -1:
-                    break_point = next(
-                        (i for i in range(content_len - 1) if tail[i].isspace()), -1
-                    )
-                tail_start = start if break_point == -1 else tail_start + break_point + 1
-
-            if text[tail_start:start].strip():
-                overlapped.append((tail_start, end))
-            else:
-                overlapped.append((start, end))
-
-        return overlapped
