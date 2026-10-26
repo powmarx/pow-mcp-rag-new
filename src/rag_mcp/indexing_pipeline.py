@@ -125,9 +125,19 @@ class IndexingPipeline:
             if file_content is None:
                 continue
 
-            chunks_created = self._process_file(
-                collection, file_content, source, project.name
-            )
+            try:
+                chunks_created = self._process_file(
+                    collection, file_content, source, project.name
+                )
+            except Exception as e:
+                # One bad file must not abort the whole project run. The
+                # file's previous chunks (if any) are left untouched.
+                print(
+                    f"[reindex] {project.name}: failed to index "
+                    f"{file_content.relative_path}: {type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+                continue
             total_chunks += chunks_created
             processed_files += 1
 
@@ -187,16 +197,13 @@ class IndexingPipeline:
         if existing_hash == file_content.file_hash:
             return 0  # File unchanged, skip
 
-        # File changed or new — remove old chunks if they exist
-        if existing_hash is not None:
-            self.store.delete_file_chunks(collection, file_content.relative_path)
-
         # Chunk the content
         chunks = self.chunker.chunk(file_content.content)
         if not chunks:
             return 0
 
-        # Generate embeddings
+        # Generate embeddings BEFORE touching the store: if this fails, the
+        # previously indexed chunks for the file remain intact and searchable.
         chunk_texts = [c.content for c in chunks]
         embeddings = self.embedding_gen.encode(chunk_texts)
 
@@ -208,6 +215,11 @@ class IndexingPipeline:
             "project": project_name,
             "source_description": source.description,
         }
+
+        # File changed or new — remove old chunks (kept adjacent to the upsert
+        # so no stale tail chunks survive when the new chunk count is smaller)
+        if existing_hash is not None:
+            self.store.delete_file_chunks(collection, file_content.relative_path)
 
         # Store in ChromaDB
         self.store.upsert_chunks(
