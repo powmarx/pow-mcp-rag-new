@@ -124,6 +124,66 @@ class ChromaStore:
                     files.add(fp)
         return files
 
+    def backfill_log_epochs(self, collection) -> int:
+        """Add numeric epoch fields to log chunks indexed before they existed.
+
+        Log chunks written by older versions only carry ISO string timestamps
+        (``timestamp_range_start`` / ``timestamp_range_end``), which ChromaDB
+        cannot range-filter. This lazily derives ``ts_start_epoch`` /
+        ``ts_end_epoch`` for those records in place, so no re-index is needed.
+
+        Records whose ISO timestamps don't parse are left untouched (they
+        have no usable time and are excluded from time-range queries).
+
+        Returns the number of records updated.
+        """
+        from rag_mcp.log.timestamps import TS_START_EPOCH_KEY, epoch_fields
+
+        all_log = collection.get(where={"file_type": "log"}, include=[])
+        all_ids = all_log["ids"] if all_log and all_log["ids"] else []
+        if not all_ids:
+            return 0
+
+        # Records that already carry an epoch field need no work.
+        with_epoch = collection.get(
+            where={"$and": [{"file_type": "log"}, {TS_START_EPOCH_KEY: {"$gte": 0}}]},
+            include=[],
+        )
+        done = set(with_epoch["ids"]) if with_epoch and with_epoch["ids"] else set()
+        missing = [i for i in all_ids if i not in done]
+        if not missing:
+            return 0
+
+        updated = 0
+        batch_size = 5000
+        for start in range(0, len(missing), batch_size):
+            batch_ids = missing[start : start + batch_size]
+            rows = collection.get(ids=batch_ids, include=["metadatas"])
+            upd_ids: list[str] = []
+            upd_meta: list[dict] = []
+            for rid, meta in zip(rows["ids"], rows["metadatas"]):
+                meta = meta or {}
+                fields = epoch_fields(
+                    meta.get("timestamp_range_start"),
+                    meta.get("timestamp_range_end"),
+                )
+                if not fields:
+                    continue
+                upd_ids.append(rid)
+                # collection.update merges metadata keys; existing ones are kept.
+                upd_meta.append(fields)
+            if upd_ids:
+                collection.update(ids=upd_ids, metadatas=upd_meta)
+                updated += len(upd_ids)
+
+        if updated:
+            print(
+                f"[search_logs] backfilled epoch timestamps on {updated} log chunks "
+                f"in {collection.name}",
+                file=sys.stderr,
+            )
+        return updated
+
     def _collection_name(self, project_name: str) -> str:
         """Build collection name from prefix and project name."""
         return f"{self.config.collection_prefix}_{project_name}"

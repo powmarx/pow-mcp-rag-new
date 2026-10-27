@@ -6,6 +6,12 @@ from pathlib import Path
 
 import anyio
 
+from rag_mcp.log.timestamps import (
+    TS_END_EPOCH_KEY,
+    TS_START_EPOCH_KEY,
+    epoch_fields,
+    parse_time_filter,
+)
 from rag_mcp.tools import ToolContext
 from rag_mcp.tools.helpers import log_tool_call
 
@@ -13,6 +19,11 @@ _ctx: ToolContext | None = None
 
 # --- Allowed severity levels for search_logs ---
 _VALID_SEVERITIES = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
+# Collections already checked (and if needed backfilled) for numeric epoch
+# timestamp fields during this process. Chunks written by the current code
+# always carry them, so one check per collection per process is enough.
+_epoch_backfilled_collections: set[str] = set()
 
 
 def register(mcp, ctx: ToolContext) -> None:
@@ -33,12 +44,17 @@ def _build_log_where_filter(
     severity: str,
     device_id: str,
     event_type: str,
-    time_range_start: str,
-    time_range_end: str,
+    time_range_start: float | None,
+    time_range_end: float | None,
 ) -> dict:
     """Build ChromaDB where clause from log filter parameters.
 
     Always includes file_type == "log" to restrict results to log chunks.
+
+    ``time_range_start`` / ``time_range_end`` are epoch seconds (ChromaDB
+    only supports ``$gte``/``$lte`` on numbers). A chunk matches when its
+    own time range *overlaps* the requested window: it ends at or after the
+    window start and begins at or before the window end.
     """
     conditions = [{"file_type": "log"}]
 
@@ -49,15 +65,23 @@ def _build_log_where_filter(
     if event_type:
         conditions.append({"event_type": event_type})
 
-    # Time range filtering uses string comparison (ISO 8601 is lexicographically sortable)
-    if time_range_start:
-        conditions.append({"timestamp_range_start": {"$gte": time_range_start}})
-    if time_range_end:
-        conditions.append({"timestamp_range_end": {"$lte": time_range_end}})
+    if time_range_start is not None:
+        conditions.append({TS_END_EPOCH_KEY: {"$gte": float(time_range_start)}})
+    if time_range_end is not None:
+        conditions.append({TS_START_EPOCH_KEY: {"$lte": float(time_range_end)}})
 
     if len(conditions) == 1:
         return conditions[0]
     return {"$and": conditions}
+
+
+def _ensure_epoch_fields(collection) -> None:
+    """Lazily backfill numeric epoch fields on legacy log chunks (once per process)."""
+    name = getattr(collection, "name", None) or id(collection)
+    if name in _epoch_backfilled_collections:
+        return
+    _ctx.store.backfill_log_epochs(collection)
+    _epoch_backfilled_collections.add(name)
 
 
 def _format_log_results(results_list: list[dict]) -> str:
@@ -167,6 +191,7 @@ def _process_log_batch(
             "error_code": group.error_code or "",
             "timestamp_range_start": group.timestamp_start or "",
             "timestamp_range_end": group.timestamp_end or "",
+            **epoch_fields(group.timestamp_start, group.timestamp_end),
             "line_start": group.line_start,
             "line_end": group.line_end,
             "record_type": "log_event",
@@ -264,6 +289,20 @@ def _search_logs_sync(
     if error_code_pattern and len(error_code_pattern) > 32:
         return "Error: error_code_pattern must not exceed 32 characters."
 
+    # Validate and convert time range to epoch seconds (never silently ignored)
+    start_epoch: float | None = None
+    end_epoch: float | None = None
+    try:
+        if time_range_start:
+            start_epoch = parse_time_filter(time_range_start, "time_range_start")
+        if time_range_end:
+            end_epoch = parse_time_filter(time_range_end, "time_range_end")
+    except ValueError as e:
+        return f"Error: {e}"
+    if start_epoch is not None and end_epoch is not None and start_epoch > end_epoch:
+        return "Error: time_range_start must not be after time_range_end."
+    has_time_filter = start_epoch is not None or end_epoch is not None
+
     # Clamp top_k to [1, 50]
     top_k = max(1, min(top_k, 50))
 
@@ -293,8 +332,8 @@ def _search_logs_sync(
         severity=severity,
         device_id=device_id,
         event_type=event_type,
-        time_range_start=time_range_start,
-        time_range_end=time_range_end,
+        time_range_start=start_epoch,
+        time_range_end=end_epoch,
     )
 
     # Over-fetch when error_code_pattern is used (post-filter step)
@@ -302,9 +341,13 @@ def _search_logs_sync(
 
     # --- Execute query ---
     all_results = []
+    errors: list[str] = []
 
     for proj_name, col in collections_to_search:
         try:
+            if has_time_filter:
+                _ensure_epoch_fields(col)
+
             if has_query:
                 # Semantic search path: embed query and use collection.query
                 _ctx.ensure_model_loaded()
@@ -364,7 +407,12 @@ def _search_logs_sync(
                         })
         except Exception as e:
             print(f"[search_logs] Error querying collection {proj_name}: {e}", file=sys.stderr)
+            errors.append(f"{proj_name}: {type(e).__name__}: {e}")
             continue
+
+    # Every collection failed: report it instead of pretending there were no matches.
+    if errors and len(errors) == len(collections_to_search):
+        return "Error: search_logs failed for all collections.\n" + "\n".join(errors)
 
     # --- Post-filter for error_code_pattern (prefix match) ---
     if error_code_pattern:

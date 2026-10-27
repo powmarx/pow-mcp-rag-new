@@ -22,6 +22,7 @@ from rag_mcp.log.parsing.content_transform import ContentTransform
 from rag_mcp.log.parsing.event_grouper import EventGroup, EventGrouper
 from rag_mcp.log.parsing.log_parser import LogParser
 from rag_mcp.log.parsing.log_pipeline import LogPipeline
+from rag_mcp.log.timestamps import epoch_fields
 
 
 class LogIndexer:
@@ -208,6 +209,9 @@ class LogIndexer:
             "error_code": group.error_code or "",
             "timestamp_range_start": group.timestamp_start or "",
             "timestamp_range_end": group.timestamp_end or "",
+            # Numeric copies of the time range so search_logs can use
+            # ChromaDB's $gte/$lte operators (strings are not supported).
+            **epoch_fields(group.timestamp_start, group.timestamp_end),
             "line_start": group.line_start,
             "line_end": group.line_end,
             "record_type": "log_event",
