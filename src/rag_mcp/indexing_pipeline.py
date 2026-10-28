@@ -13,7 +13,7 @@ from pathlib import Path
 from rich.console import Console
 
 from rag_mcp.chroma_store import ChromaStore
-from rag_mcp.chunker import Chunker
+from rag_mcp.chunker import Chunker, chunk_metadatas
 from rag_mcp.config_loader import AppConfig, ProjectConfig, SourcePattern
 from rag_mcp.embedding_generator import EmbeddingGenerator
 from rag_mcp.file_reader import FileContent, FileReader
@@ -228,6 +228,7 @@ class IndexingPipeline:
             chunk_texts,
             embeddings,
             metadata_base,
+            chunk_metadatas(chunks, file_content.relative_path),
         )
 
         return len(chunks)

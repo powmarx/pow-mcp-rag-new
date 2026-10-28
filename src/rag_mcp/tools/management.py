@@ -69,7 +69,7 @@ def _add_project_sync(name: str, path: str) -> str:
                 )
         return f"Error: Project '{name}' already exists. Use a different name."
 
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.config_loader import ProjectConfig
     from rag_mcp.file_reader import FileReader
     from rag_mcp.indexing_pipeline import IndexingPipeline
@@ -200,7 +200,7 @@ def _add_file_sync(file_path: str, project: str) -> str:
         return f"Error: Project '{project}' has no index. Run the indexer first."
 
     # Read the file
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.config_loader import SourcePattern
     from rag_mcp.file_reader import FileReader
 
@@ -244,7 +244,10 @@ def _add_file_sync(file_path: str, project: str) -> str:
         "project": project,
         "source_description": f"Manually added: {target.name}",
     }
-    _ctx.store.upsert_chunks(collection, relative_str, chunk_texts, embeddings, metadata_base)
+    _ctx.store.upsert_chunks(
+        collection, relative_str, chunk_texts, embeddings, metadata_base,
+        chunk_metadatas(chunks, relative_str),
+    )
 
     # Persist the file pattern in config.yaml so it gets re-indexed
     pattern_str = relative_str
@@ -315,7 +318,7 @@ def _add_folder_sync(folder_path: str, project: str, pattern: str = "**/*") -> s
 
     import glob as glob_mod
 
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.config_loader import SourcePattern
     from rag_mcp.file_reader import FileReader
 
@@ -368,7 +371,10 @@ def _add_folder_sync(folder_path: str, project: str, pattern: str = "**/*") -> s
             "project": project,
             "source_description": f"Manually added folder: {relative_dir_str}",
         }
-        _ctx.store.upsert_chunks(collection, content.relative_path, chunk_texts, embeddings, metadata_base)
+        _ctx.store.upsert_chunks(
+            collection, content.relative_path, chunk_texts, embeddings, metadata_base,
+            chunk_metadatas(chunks, content.relative_path),
+        )
         total_chunks += len(chunks)
         indexed_files += 1
 
@@ -495,7 +501,7 @@ def _add_pattern_sync(
             )
 
     # --- Index matching files ---
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.config_loader import SourcePattern
     from rag_mcp.file_reader import FileReader
 

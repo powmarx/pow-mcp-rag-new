@@ -49,7 +49,7 @@ def _run_inline() -> None:
     from rag_mcp.config_loader import ConfigLoader
     from rag_mcp.embedding_generator import EmbeddingGenerator
     from rag_mcp.file_reader import FileReader
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.indexing_pipeline import IndexingPipeline
     from rich.console import Console
 
@@ -234,7 +234,7 @@ def _handle_add_folder(args, config, loader, console) -> None:
     (mirrors indexer.py's handle_add_folder / the add_folder MCP tool)."""
     import glob as glob_mod
     from rag_mcp.chroma_store import ChromaStore
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.config_loader import SourcePattern
     from rag_mcp.embedding_generator import EmbeddingGenerator
     from rag_mcp.file_reader import FileReader
@@ -313,7 +313,10 @@ def _handle_add_folder(args, config, loader, console) -> None:
             "project": args.project,
             "source_description": f"Manually added folder: {relative_dir_str}",
         }
-        store.upsert_chunks(collection, content.relative_path, chunk_texts, embeddings, metadata_base)
+        store.upsert_chunks(
+            collection, content.relative_path, chunk_texts, embeddings, metadata_base,
+            chunk_metadatas(chunks, content.relative_path),
+        )
         total_chunks += len(chunks)
         indexed_files += 1
 
@@ -340,7 +343,7 @@ def _handle_add_pattern(args, config, loader, console) -> None:
     (mirrors indexer.py's handle_add_pattern / the add_pattern MCP tool)."""
     import glob as glob_mod
     from rag_mcp.chroma_store import ChromaStore
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.config_loader import SourcePattern
     from rag_mcp.embedding_generator import EmbeddingGenerator
     from rag_mcp.file_reader import FileReader
@@ -419,7 +422,10 @@ def _handle_add_pattern(args, config, loader, console) -> None:
             "project": args.project,
             "source_description": desc,
         }
-        store.upsert_chunks(collection, content.relative_path, chunk_texts, embeddings, metadata_base)
+        store.upsert_chunks(
+            collection, content.relative_path, chunk_texts, embeddings, metadata_base,
+            chunk_metadatas(chunks, content.relative_path),
+        )
         total_chunks += len(chunks)
         indexed_files += 1
 
@@ -484,7 +490,7 @@ def _handle_convert_pdfs(args, config, console) -> None:
 def _handle_estimate(args, config, console) -> None:
     """Dry-run chunk/size estimate (mirrors indexer.py's handle_estimate)."""
     import glob as glob_mod
-    from rag_mcp.chunker import Chunker
+    from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.file_reader import FileReader
 
     console.print("[bold green]RAG Index Estimate[/bold green]\n")

@@ -87,11 +87,23 @@ class ChromaStore:
         chunks: list[str],
         embeddings: list[list[float]],
         metadata_base: dict,
+        chunk_metadatas: list[dict] | None = None,
     ) -> None:
-        """Store chunks with embeddings and metadata. Handles batch size limits."""
+        """Store chunks with embeddings and metadata. Handles batch size limits.
+
+        ``chunk_metadatas`` optionally supplies per-chunk fields (e.g. the
+        section ``breadcrumb``) merged on top of ``metadata_base``.
+        """
+        if chunk_metadatas is not None and len(chunk_metadatas) != len(chunks):
+            raise ValueError("chunk_metadatas must have one entry per chunk")
         ids = [f"{file_path}::chunk_{i}" for i in range(len(chunks))]
         metadatas = [
-            {**metadata_base, "chunk_index": i, "total_chunks": len(chunks)}
+            {
+                **metadata_base,
+                **(chunk_metadatas[i] if chunk_metadatas else {}),
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+            }
             for i in range(len(chunks))
         ]
 

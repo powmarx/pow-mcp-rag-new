@@ -115,6 +115,7 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
                         "file_type": meta.get("file_type", "unknown"),
                         "relevance": round(max(0.0, min(1.0, 1 - distance)), 4),
                         "description": meta.get("source_description", ""),
+                        "breadcrumb": meta.get("breadcrumb", ""),
                     }
                 )
 
@@ -156,10 +157,12 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
 
     output_parts.append(f"Found {len(results)} results for: '{query}'\n")
     for i, r in enumerate(results, 1):
+        section_line = f"Section: {r['breadcrumb']}\n" if r.get("breadcrumb") else ""
         output_parts.append(
             f"--- Result {i} (relevance: {r['relevance']}) ---\n"
             f"Project: {r['project']}\n"
             f"File: {r['file_path']} ({r['file_type']})\n"
+            f"{section_line}"
             f"Description: {r['description']}\n"
             f"Content:\n{r['content']}\n"
         )
