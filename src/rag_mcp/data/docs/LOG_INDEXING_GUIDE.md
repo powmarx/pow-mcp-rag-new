@@ -209,8 +209,8 @@ The `search_logs` MCP tool searches indexed log events with structured filtering
 | `query` | string | No* | Semantic search on log message content (max 512 chars) |
 | `project` | string | No | Filter by project name |
 | `severity` | string | No | One of: DEBUG, INFO, WARNING, ERROR, CRITICAL |
-| `time_range_start` | string | No | ISO 8601 start time (e.g., "2026-04-28T05:00:00Z") |
-| `time_range_end` | string | No | ISO 8601 end time |
+| `time_range_start` | string | No | ISO 8601 start time (e.g., "2026-04-28T05:00:00Z"); `Z`, `+hh:mm` offsets and a bare date are accepted, naive values are treated as UTC |
+| `time_range_end` | string | No | ISO 8601 end time (same formats) |
 | `error_code_pattern` | string | No | Prefix match on error codes (max 32 chars) |
 | `device_id` | string | No | Filter by device identifier |
 | `event_type` | string | No | Filter by event type (exact match) |
@@ -222,10 +222,13 @@ The `search_logs` MCP tool searches indexed log events with structured filtering
 
 - **With query**: Encodes the query into a vector, finds semantically similar chunks, applies filters as ChromaDB `where` clause.
 - **Without query (filters only)**: Returns matching chunks ordered by timestamp (newest first).
+- **Time range**: An event matches when its own time range *overlaps* the requested window (it ends at or after `time_range_start` and starts at or before `time_range_end`). Either bound can be used alone. Filtering is done numerically on the `ts_start_epoch` / `ts_end_epoch` metadata fields (epoch seconds, UTC) that are stored next to the ISO strings; logs indexed by an older version without these fields are upgraded in place the first time a time-filtered search touches their collection — no re-index needed.
+- **Invalid time value**: A value that is not ISO 8601, or a start later than the end, returns an error message (the filter is never silently ignored).
 - **error_code_pattern**: Uses prefix matching (e.g., "88a1" matches "88a15300", "88a15310").
 - **Invalid severity**: Returns an error message listing accepted values.
 - **No criteria**: Returns an error message requesting at least one search criterion.
 - **No results**: Returns an empty list with count zero.
+- **Query failure**: If the search fails in every collection, an error with the cause is returned instead of an empty result.
 
 ### Examples
 
@@ -321,7 +324,7 @@ Each stage is independent and configurable. The parsing layer (`log_parser`, `li
 ### search_logs returns no results
 
 - Verify the project was indexed: check `indexer.py` output for chunk counts.
-- If using time range filters, ensure timestamps are in ISO 8601 UTC format.
+- If using time range filters, remember the window is matched against each event's own time range; widen the window or drop one bound. A time value in the wrong format returns an explicit error rather than zero results.
 - If using severity filter, ensure it's uppercase (DEBUG, INFO, WARNING, ERROR, CRITICAL).
 - Try a broader query or fewer filters to confirm data exists.
 

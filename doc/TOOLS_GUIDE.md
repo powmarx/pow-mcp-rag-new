@@ -33,6 +33,8 @@ You don't call these tools directly — just ask questions naturally and the AI 
 ### 1. search_docs — General semantic search
 
 **What it does:** Searches all indexed content (code, docs, configs) using natural language.
+For `.md`, `.txt` and `.rst` files each result also shows a `Section:` line with the heading
+path the chunk belongs to (e.g. `Section: Install > Quick Start`).
 
 **When to use:** General questions about your projects.
 
@@ -220,8 +222,8 @@ You don't call these tools directly — just ask questions naturally and the AI 
 | `query` | string (max 512 chars) | Semantic search on log message content. Optional if filters provided. |
 | `project` | string | Filter by project name |
 | `severity` | string | One of: DEBUG, INFO, WARNING, ERROR, CRITICAL |
-| `time_range_start` | string | ISO 8601 start time (e.g., "2026-04-28T05:00:00Z") |
-| `time_range_end` | string | ISO 8601 end time |
+| `time_range_start` | string | ISO 8601 start time (e.g., "2026-04-28T05:00:00Z"). Returns events whose time range overlaps the window. |
+| `time_range_end` | string | ISO 8601 end time. Either bound may be given alone. |
 | `error_code_pattern` | string (max 32 chars) | Prefix match on error codes (e.g., "88a1" matches "88a15300") |
 | `device_id` | string | Filter by device identifier |
 | `event_type` | string | Filter by event type (command, response, error, state_change, etc.) |
@@ -236,6 +238,7 @@ You don't call these tools directly — just ask questions naturally and the AI 
 **Tips:**
 - Use `error_code_pattern` with a prefix to find all variants of an error code family
 - Combine `severity: ERROR` with a time range to narrow down issues
+- A malformed time value (e.g. "28/04/2026") or a start after the end returns an error instead of silently returning nothing
 - Use `query` alone for semantic search ("dispense failed") or combine with filters for precision
 - If no `query` is provided but filters are set, results are ordered by timestamp (newest first)
 

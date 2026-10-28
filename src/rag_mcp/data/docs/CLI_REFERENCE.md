@@ -49,7 +49,9 @@ rag-mcp serve --list-tools     # print the tool list and exit (health check)
 ## `index`
 
 Indexes configured projects into ChromaDB. Reads `config.yaml`, generates embeddings, stores
-chunks. Safe to re-run — only changed files are re-processed (tracked via file hash).
+chunks. Safe to re-run — only changed files are re-processed (tracked via file hash). A file
+whose embedding fails keeps its previously indexed chunks, is reported on stderr
+(`[reindex] <project>: failed to index <path>: ...`) and does not abort the run.
 
 ```bash
 rag-mcp index                             # index all configured projects

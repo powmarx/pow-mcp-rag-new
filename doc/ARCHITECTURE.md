@@ -4,7 +4,10 @@
 
 1. **Indexing**: Reads files matching configured patterns, splits them into overlapping chunks,
    generates vector embeddings using sentence-transformers, and stores everything in ChromaDB
-   with metadata (file path, type, project). Runs as a one-off Docker container (`indexer.py`)
+   with metadata (file path, type, project, and — for `.md`/`.txt`/`.rst` — the section
+   `breadcrumb`, e.g. `Install > Quick Start`). The chunker never splits a fenced code block
+   that fits in `chunk_size`, and keeps Markdown (`#`) and underlined (RST / plain-text)
+   headings attached to their section body. Runs as a one-off Docker container (`indexer.py`)
    or via `rag-mcp index` in pip mode.
 
 2. **Log-specific pipeline**: For sources with `type: log`, a dedicated pipeline applies:
@@ -18,7 +21,9 @@
    before returning them with context. See [Retrieval Model](#retrieval-model) below.
 
 4. **Change detection**: The indexer tracks file hashes. Re-running it only re-indexes files
-   that have changed since the last run.
+   that have changed since the last run. A changed file's old chunks are replaced only after
+   its new chunks have been embedded successfully; if embedding fails, the previous chunks stay
+   searchable, the error is logged to stderr, and indexing continues with the next file.
 
 5. **Incremental log indexing**: Log files are indexed incrementally using byte-offset tracking.
    Only new content appended since the last index run is processed. If a file is truncated
@@ -147,7 +152,7 @@ pow-mcp-rag-new/
 │       ├── file_reader.py         # File reading (encoding, binary, PDF)
 │       ├── pdf_extractor.py       # PDF text extraction (fallback for image-only PDFs)
 │       ├── pdf_converter.py       # PDF to Markdown conversion
-│       ├── chunker.py             # Text chunking with configurable separators
+│       ├── chunker.py             # Text chunking: separators, code-fence aware, section breadcrumbs
 │       ├── embedding_generator.py # SentenceTransformer wrapper
 │       ├── chroma_store.py        # ChromaDB connection and operations
 │       ├── auto_detector.py       # Project structure auto-detection (add_project tool)
@@ -166,6 +171,7 @@ pow-mcp-rag-new/
 │           ├── content_transform.py   # Content transformation (extract/replace/strip/collapse)
 │           ├── log_parser.py          # Pattern-based log line parser
 │           ├── event_grouper.py       # Event deduplication and grouping
+│           ├── timestamps.py          # ISO <-> epoch conversion for time-range filtering
 │           └── log_indexer.py         # Log indexing orchestration + incremental offsets
 ├── tests/                 # Unit/integration tests (pytest)
 ├── .kiro/
