@@ -1,22 +1,15 @@
 """Shared helper functions used across tool modules."""
 
-import sys
-import time
+from rag_mcp import observability
 
 
 def log_tool_call(tool_name: str, params: dict, start_time: float, result_count: int):
-    """Log tool invocation to stderr."""
-    elapsed_ms = (time.time() - start_time) * 1000
-    query = params.get("query", "")
-    if len(query) > 100:
-        query = query[:100] + "..."
-    params_str = ", ".join(f"{k}={repr(v)}" for k, v in params.items() if k != "query")
-    if query:
-        params_str = f"query={repr(query)}" + (f", {params_str}" if params_str else "")
-    print(
-        f"[tool] {tool_name}({params_str}) -> {result_count} results in {elapsed_ms:.0f}ms",
-        file=sys.stderr,
-    )
+    """Log a tool invocation as one structured ``tool_call`` JSON line.
+
+    Written to stderr and appended to the JSONL events file (see
+    ``rag_mcp.observability``). Signature unchanged so call sites are untouched.
+    """
+    observability.log_tool_call_event(tool_name, params, start_time, result_count)
 
 
 def validate_path(file_path: str) -> str | None:

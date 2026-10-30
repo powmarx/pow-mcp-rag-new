@@ -80,6 +80,7 @@ def _run_inline() -> None:
 
     _suppress_fastmcp_lifespan_warning()
 
+    from rag_mcp import observability
     from rag_mcp.chroma_store import ChromaStore
     from rag_mcp.config_loader import ConfigLoader
     from rag_mcp.embedding_generator import EmbeddingGenerator
@@ -104,6 +105,11 @@ def _run_inline() -> None:
 
     store = ChromaStore(config.storage)
     store.connect()
+
+    # Structured tool-call events: stderr + <storage.path>/observability/events.jsonl
+    # (RAG_OBSERVABILITY_LOG_PATH overrides the file location).
+    observability.configure(observability.default_log_path(config.storage.path))
+    print(f"[startup] Event log: {observability.resolve_log_path()}", file=sys.stderr)
 
     embedding_gen = EmbeddingGenerator(config.embedding.model, config.embedding.query_instruction)
     print(f"[startup] Embedding model configured: {config.embedding.model} (lazy load)", file=sys.stderr)

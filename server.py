@@ -47,6 +47,7 @@ _suppress_fastmcp_lifespan_warning()
 
 from mcp.server.fastmcp import FastMCP
 
+from rag_mcp import observability
 from rag_mcp.chroma_store import ChromaStore
 from rag_mcp.config_loader import ConfigLoader
 from rag_mcp.embedding_generator import EmbeddingGenerator
@@ -138,6 +139,11 @@ try:
 except Exception as e:
     print(f"[fatal] Failed to connect to ChromaDB: {e}", file=sys.stderr)
     sys.exit(1)
+
+# Structured tool-call events: stderr + <storage.path>/observability/events.jsonl
+# (RAG_OBSERVABILITY_LOG_PATH overrides the file location).
+observability.configure(observability.default_log_path(config.storage.path))
+print(f"[startup] Event log: {observability.resolve_log_path()}", file=sys.stderr)
 
 startup_ms = (time.time() - startup_start) * 1000
 print(f"[startup] Core ready in {startup_ms:.0f}ms", file=sys.stderr)

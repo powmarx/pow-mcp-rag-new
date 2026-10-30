@@ -100,7 +100,7 @@ def test_detect_gitmodules():
         (lib_dir / "mylib.h").write_text("#pragma once")
         (lib_dir / "mylib.cpp").write_text("void foo() {}")
 
-        detector = ProjectAutoDetector()
+        detector = ProjectAutoDetector() 
         sources = detector.detect(path)
 
         patterns = [s.pattern for s in sources]
