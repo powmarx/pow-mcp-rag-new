@@ -44,6 +44,15 @@ what is being indexed:
     model         embedding model name
     error_type    exception class name, e.g. "RuntimeError"
     error         exception message, truncated to 500 chars
+
+``log_epoch_backfill`` adds (emitted by ``ChromaStore.backfill_log_epochs``
+only when at least one record was updated; a no-op check emits nothing):
+
+    collection       ChromaDB collection name, e.g. "rag_logs"
+    records_checked  log chunks in the collection
+    records_missing  chunks that had no numeric epoch fields
+    records_updated  chunks that received them (missing minus unparseable)
+    duration_ms      wall-clock duration of the whole backfill, one decimal
 """
 
 from __future__ import annotations
@@ -225,4 +234,33 @@ def log_embed_failure_event(
         model=model,
         error_type=error_type,
         error=error_text,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Event: log_epoch_backfill
+# ---------------------------------------------------------------------------
+
+
+def log_log_epoch_backfill_event(
+    collection: str,
+    records_checked: int,
+    records_missing: int,
+    records_updated: int,
+    start_time: float,
+) -> dict[str, Any]:
+    """Emit one ``log_epoch_backfill`` event. ``start_time`` is a ``time.time()`` value."""
+    duration_ms = round((time.time() - start_time) * 1000, 1)
+    message = (
+        f"backfilled epoch timestamps on {records_updated}/{records_missing} legacy log chunks "
+        f"in {collection} ({records_checked} checked) in {duration_ms:.0f}ms"
+    )
+    return emit(
+        "log_epoch_backfill",
+        message,
+        collection=collection,
+        records_checked=records_checked,
+        records_missing=records_missing,
+        records_updated=records_updated,
+        duration_ms=duration_ms,
     )

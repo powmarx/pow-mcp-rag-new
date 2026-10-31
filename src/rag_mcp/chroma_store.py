@@ -6,10 +6,12 @@ querying, and managing document chunks and their embeddings.
 """
 
 import sys
+import time
 from pathlib import Path
 
 import chromadb
 
+from rag_mcp import observability
 from rag_mcp.config_loader import StorageConfig
 
 
@@ -151,6 +153,7 @@ class ChromaStore:
         """
         from rag_mcp.log.timestamps import TS_START_EPOCH_KEY, epoch_fields
 
+        start_time = time.time()
         all_log = collection.get(where={"file_type": "log"}, include=[])
         all_ids = all_log["ids"] if all_log and all_log["ids"] else []
         if not all_ids:
@@ -189,10 +192,14 @@ class ChromaStore:
                 updated += len(upd_ids)
 
         if updated:
-            print(
-                f"[search_logs] backfilled epoch timestamps on {updated} log chunks "
-                f"in {collection.name}",
-                file=sys.stderr,
+            # Structured event (stderr + JSONL), only when something changed:
+            # a no-op check is the steady state and would just be noise.
+            observability.log_log_epoch_backfill_event(
+                collection=collection.name,
+                records_checked=len(all_ids),
+                records_missing=len(missing),
+                records_updated=updated,
+                start_time=start_time,
             )
         return updated
 
