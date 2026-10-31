@@ -11,6 +11,8 @@ blocking the entire package if PyTorch DLLs are locked or unavailable.
 import sys
 import time
 
+from rag_mcp import observability
+
 
 class EmbeddingGenerator:
     """Generates embeddings using a local SentenceTransformer model."""
@@ -44,16 +46,30 @@ class EmbeddingGenerator:
                 Larger values use more memory but are significantly faster.
                 Default 256 balances speed and memory for typical workloads.
         """
-        if not self.model:
-            raise RuntimeError("Model not loaded. Call load() first.")
-        return self.model.encode(
-            texts,
-            batch_size=batch_size,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-        ).tolist()
+        return self._encode(texts, batch_size=batch_size, kind="documents")
+
     def encode_query(self, query: str) -> list[float]:
         """Encode a single query string. Applies the query instruction prefix
         (if configured) — this must NOT be applied to indexed documents."""
         text = f"{self.query_instruction}{query}" if self.query_instruction else query
-        return self.encode([text])[0]
+        return self._encode([text], batch_size=256, kind="query")[0]
+
+    def _encode(self, texts: list[str], batch_size: int, kind: str) -> list[list[float]]:
+        """Single choke point for all embedding work (indexing, log indexing,
+        query encoding). Any failure is recorded as a structured
+        ``embed_failure`` event and then re-raised unchanged, so callers'
+        existing error handling is unaffected."""
+        try:
+            if not self.model:
+                raise RuntimeError("Model not loaded. Call load() first.")
+            return self.model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            ).tolist()
+        except Exception as e:
+            observability.log_embed_failure_event(
+                error=e, kind=kind, batch_size=len(texts), model=self.model_name
+            )
+            raise

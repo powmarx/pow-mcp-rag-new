@@ -85,6 +85,11 @@ def _run_inline() -> None:
         config.storage.path = str(data_path)
         data_path.mkdir(parents=True, exist_ok=True)
 
+    # Structured events (embed failures) go to stderr + the same JSONL file
+    # the server uses: <storage.path>/observability/events.jsonl.
+    from rag_mcp import observability
+    observability.configure(observability.default_log_path(config.storage.path))
+
     # --- --list-projects: read-only, reuses the list_projects MCP tool ---
     if args.list_projects:
         _handle_list_projects(config, loader)

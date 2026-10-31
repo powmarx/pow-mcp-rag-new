@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from rich.console import Console
 
+from rag_mcp import observability
 from rag_mcp.auto_detector import ProjectAutoDetector
 from rag_mcp.chroma_store import ChromaStore
 from rag_mcp.chunker import Chunker
@@ -41,6 +42,12 @@ SCRIPT_DIR = Path(__file__).parent
 CONFIG_PATH = Path(os.environ.get("RAG_CONFIG_PATH") or (SCRIPT_DIR / "config" / "config.yaml"))
 
 console = Console(highlight=False, force_terminal=False)
+
+
+def _configure_event_log(config) -> None:
+    """Structured events (embed failures) go to stderr + the same JSONL file
+    the server uses: <storage.path>/observability/events.jsonl."""
+    observability.configure(observability.default_log_path(config.storage.path))
 
 
 def main():
@@ -96,6 +103,7 @@ def main():
     except (FileNotFoundError, ValueError) as e:
         console.print(f"[red]Error loading config: {e}[/red]")
         sys.exit(1)
+    _configure_event_log(config)
 
     # Load embedding model
     embedding_gen = EmbeddingGenerator(config.embedding.model, config.embedding.query_instruction)
@@ -193,6 +201,7 @@ def handle_add_project(args):
     except FileNotFoundError:
         console.print(f"[red]Error: Config file not found: {CONFIG_PATH}[/red]")
         sys.exit(1)
+    _configure_event_log(config)
 
     console.print(f"[bold green]Auto-detecting project structure[/bold green]")
     console.print(f"  Name: {args.name}")
@@ -261,6 +270,7 @@ def handle_add_folder(args):
     except (FileNotFoundError, ValueError) as e:
         console.print(f"[red]Error loading config: {e}[/red]")
         sys.exit(1)
+    _configure_event_log(config)
 
     project_config = next((p for p in config.projects if p.name == args.project), None)
     if project_config is None:
@@ -361,6 +371,7 @@ def handle_add_pattern(args):
     except (FileNotFoundError, ValueError) as e:
         console.print(f"[red]Error loading config: {e}[/red]")
         sys.exit(1)
+    _configure_event_log(config)
 
     project_config = next((p for p in config.projects if p.name == args.project), None)
     if project_config is None:

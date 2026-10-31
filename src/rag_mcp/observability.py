@@ -34,6 +34,16 @@ Event envelope (common to all event types):
     params        the parameters the tool reported (query truncated to 100 chars)
     duration_ms   wall-clock duration, one decimal
     result_count  number of results/chunks the tool reported
+
+``embed_failure`` (level ERROR) adds — deliberately no file/project context,
+it is emitted from inside ``EmbeddingGenerator`` which knows nothing about
+what is being indexed:
+
+    kind          "documents" (indexing / log indexing) | "query" (search time)
+    batch_size    number of texts in the failed batch
+    model         embedding model name
+    error_type    exception class name, e.g. "RuntimeError"
+    error         exception message, truncated to 500 chars
 """
 
 from __future__ import annotations
@@ -53,6 +63,8 @@ DEFAULT_LOG_RELATIVE_PATH = Path("observability") / "events.jsonl"
 # Queries are user-supplied free text; cap what we persist (same limit the old
 # free-text line used).
 MAX_QUERY_CHARS = 100
+# Exception messages can embed whole inputs (e.g. tokenizer errors); cap them.
+MAX_ERROR_CHARS = 500
 
 _configured_path: Path | None = None
 _file_lock = threading.Lock()
@@ -179,4 +191,38 @@ def log_tool_call_event(
         params=safe_params,
         duration_ms=duration_ms,
         result_count=result_count,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Event: embed_failure
+# ---------------------------------------------------------------------------
+
+
+def _truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
+def log_embed_failure_event(
+    error: BaseException,
+    kind: str,
+    batch_size: int,
+    model: str,
+) -> dict[str, Any]:
+    """Emit one ``embed_failure`` event (level ERROR). Never raises."""
+    error_type = type(error).__name__
+    error_text = _truncate(str(error), MAX_ERROR_CHARS)
+    message = (
+        f"embedding failed (kind={kind}, batch_size={batch_size}, model={model}): "
+        f"{error_type}: {error_text}"
+    )
+    return emit(
+        "embed_failure",
+        message,
+        level="ERROR",
+        kind=kind,
+        batch_size=batch_size,
+        model=model,
+        error_type=error_type,
+        error=error_text,
     )
