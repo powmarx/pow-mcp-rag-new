@@ -35,6 +35,7 @@ _BUNDLED_DOCS = {
     "log-indexing": "LOG_INDEXING_GUIDE.md",
     "log-patterns": "LOG_PATTERN_CONFIGURATION.md",
     "cli": "CLI_REFERENCE.md",
+    "observability": "OBSERVABILITY.md",
 }
 
 
@@ -197,7 +198,7 @@ def main() -> None:
                 "  serve    Start the MCP server (default: stdio transport)\n"
                 "  index    Index project files into ChromaDB\n"
                 "  config   Show resolved config and data paths\n"
-                "  docs     List or print bundled documentation (tools, log-indexing, log-patterns)\n"
+                "  docs     List or print bundled documentation (tools, log-indexing, log-patterns, cli, observability)\n"
                 "  get_metrics  Replay the JSONL event log (tool calls, embed failures, backfills); --json for raw output\n"
                 "\n"
                 "Run 'rag-mcp <command> --help' for command-specific options.\n",

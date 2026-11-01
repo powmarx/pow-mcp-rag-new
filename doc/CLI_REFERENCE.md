@@ -9,7 +9,7 @@ identical, but invoked through `docker run` with volume mounts rather than direc
 rag-mcp <command> [options]
 ```
 
-Commands: [`serve`](#serve) · [`index`](#index) · [`config`](#config) · [`docs`](#docs)
+Commands: [`serve`](#serve) · [`index`](#index) · [`config`](#config) · [`docs`](#docs) · [`get_metrics`](#get_metrics)
 
 Running `rag-mcp` with no arguments is equivalent to `rag-mcp index`.
 
@@ -40,6 +40,7 @@ rag-mcp serve --list-tools     # print the tool list and exit (health check)
 |---|---|
 | `RAG_CONFIG_PATH` | Explicit path to `config.yaml`. Overrides the default XDG location (see [`config`](#config)). Also used by Docker to point at the config seeded into the data volume. |
 | `RAG_DATA_PATH` | Explicit ChromaDB storage directory. Overrides the default XDG data location. |
+| `RAG_OBSERVABILITY_LOG_PATH` | Explicit path of the JSONL event log (tool calls, embedding failures, log-epoch backfills). Default: `<storage.path>/observability/events.jsonl`, next to the ChromaDB data. Honoured by `serve`, `index` and `get_metrics` alike. See [OBSERVABILITY.md](OBSERVABILITY.md). |
 | `MCP_HTTP_PORT` | Overrides `--port` for `--http` mode and **disables** auto-fallback to another port — if the port is taken, startup fails immediately instead of silently binding elsewhere. Use this when something else (e.g. a container host port mapping) needs the port to match exactly. |
 | `MCP_HTTP_PATH` | HTTP endpoint path for `--http` mode (default: `/mcp`). Example: `/rag-mcp`. |
 | `HF_HUB_OFFLINE` | Set to `1` to suppress `sentence-transformers`'/`huggingface_hub`'s network reachability check on startup ("Warning: You are sending unauthenticated requests to the HF Hub..."). Safe once the embedding model and reranker are already cached locally (`~/.cache/huggingface/hub/`), which they are after the first successful run. `setup-pypi.bat` / `setup_mcp_config.py --uvx` / `remote_mcp_setup.py` set this by default in generated `mcp.json` entries (opt out with `remote_mcp_setup.py --no-hf-offline`). |
@@ -51,7 +52,9 @@ rag-mcp serve --list-tools     # print the tool list and exit (health check)
 Indexes configured projects into ChromaDB. Reads `config.yaml`, generates embeddings, stores
 chunks. Safe to re-run — only changed files are re-processed (tracked via file hash). A file
 whose embedding fails keeps its previously indexed chunks, is reported on stderr
-(`[reindex] <project>: failed to index <path>: ...`) and does not abort the run.
+(`[reindex] <project>: failed to index <path>: ...` plus a structured `embed_failure` JSON
+event, also appended to the event log — see [`get_metrics`](#get_metrics)) and does not abort
+the run.
 
 ```bash
 rag-mcp index                             # index all configured projects
@@ -131,6 +134,7 @@ rag-mcp docs                # list available bundled docs
 rag-mcp docs tools          # print the full MCP tool reference
 rag-mcp docs log-indexing   # print the log indexing usage guide
 rag-mcp docs log-patterns   # print the log pattern configuration guide
+rag-mcp docs observability  # print the observability guide (event log, counters, get_metrics)
 ```
 
 | Name | Bundled doc | Also available at (repo) |
@@ -138,8 +142,9 @@ rag-mcp docs log-patterns   # print the log pattern configuration guide
 | `tools` | Full MCP tool reference (21 tools, usage examples) | [doc/TOOLS_GUIDE.md](TOOLS_GUIDE.md) |
 | `log-indexing` | Structured log indexing usage guide | [doc/LOG_INDEXING_GUIDE.md](LOG_INDEXING_GUIDE.md) |
 | `log-patterns` | How to write log pattern configs for new formats | [doc/LOG_PATTERN_CONFIGURATION.md](LOG_PATTERN_CONFIGURATION.md) |
+| `observability` | Event log format, counters, `get_metrics` tool and CLI | [doc/OBSERVABILITY.md](OBSERVABILITY.md) |
 
-Only these three are bundled — setup/architecture docs (this file, `DOCKER_GUIDE.md`,
+Only these are bundled — setup/architecture docs (this file, `DOCKER_GUIDE.md`,
 `PIP_INSTALL_GUIDE.md`, `ARCHITECTURE.md`, `TROUBLESHOOTING.md`) are repo-only, since they're
 primarily useful before or during installation rather than at runtime. See the Documentation
 table in [README.md](../README.md#documentation) for the full split.
@@ -150,8 +155,56 @@ non-ASCII characters like `→`, which crash Python's default `print()` on Windo
 
 ---
 
+## `get_metrics`
+
+Replays the JSONL event log (tool calls, embedding failures, log-epoch backfills) and prints
+aggregate counters. Read-only: starts no server, loads no model, opens no ChromaDB. For the
+**live** counters of a running server use the `get_metrics` MCP tool instead — the CLI cannot
+see another process's memory, it reads what was written to disk (which also includes
+`rag-mcp index` runs). Full details: [OBSERVABILITY.md](OBSERVABILITY.md) / `rag-mcp docs observability`.
+
+```bash
+rag-mcp get_metrics                 # human-readable report
+rag-mcp get_metrics --json          # raw JSON (same sections as the get_metrics MCP tool)
+rag-mcp get_metrics --file PATH     # replay a specific events.jsonl
+```
+
+| Flag | Effect |
+|---|---|
+| `--json` | Print the snapshot as JSON instead of the text report. |
+| `--file PATH` | Replay this file instead of the resolved default. Exit `2` if `PATH` is missing. |
+
+File resolution without `--file`: `RAG_OBSERVABILITY_LOG_PATH` if set, else
+`<storage.path>/observability/events.jsonl` with `storage.path` resolved from `config.yaml`
+exactly like `serve` does (`RAG_CONFIG_PATH` / `RAG_DATA_PATH` apply).
+
+```
+$ rag-mcp get_metrics
+Event log : /home/me/.local/share/rag-mcp/observability/events.jsonl
+Events    : 6 parsed, 0 skipped (malformed/unknown), 2 process(es)
+Span      : 2026-10-31T22:13:31.994Z -> 2026-10-31T22:13:32.353Z
+
+Tool calls: 3
+  tool                      calls    avg ms    max ms  zero-result
+  search_logs                   3      10.6      26.1            1
+
+Embed failures: 2
+  by kind      : documents=1, query=1
+  by error type: RuntimeError=1, ValueError=1
+
+Log-epoch backfills: 1 event(s), 3 record(s) updated
+  rag_logs                 1 event(s), 3 updated
+```
+
+A missing file is reported (`file not found — nothing has been logged yet`) with zero
+counters and exit code `0`. Malformed or truncated lines are skipped and counted, never fatal.
+
+---
+
 ## Exit codes
 
 All commands exit `0` on success. Non-zero (`1`, typically) on: missing/invalid config, unknown
 project name passed to `--project`, unknown `docs` name, or unhandled exceptions during indexing.
+`get_metrics` exits `2` on a usage error (`--file` without a path) and `0` otherwise, including
+when the event log does not exist yet.
 `serve` runs indefinitely (exit code only applies if it fails to start).

@@ -22,6 +22,7 @@ setup/architecture docs like DOCKER_GUIDE.md stay repo-only):
     doc/LOG_INDEXING_GUIDE.md        -> src/rag_mcp/data/docs/LOG_INDEXING_GUIDE.md
     doc/LOG_PATTERN_CONFIGURATION.md -> src/rag_mcp/data/docs/LOG_PATTERN_CONFIGURATION.md
     doc/CLI_REFERENCE.md             -> src/rag_mcp/data/docs/CLI_REFERENCE.md
+    doc/OBSERVABILITY.md             -> src/rag_mcp/data/docs/OBSERVABILITY.md
 """
 
 import shutil
@@ -45,6 +46,7 @@ DOC_FILES = [
     "LOG_INDEXING_GUIDE.md",
     "LOG_PATTERN_CONFIGURATION.md",
     "CLI_REFERENCE.md",
+    "OBSERVABILITY.md",
 ]
 
 

@@ -27,6 +27,7 @@ You don't call these tools directly — just ask questions naturally and the AI 
 | 17 | [`remove_project`](#17-remove_project--remove-a-project) | Remove a project and all its indexed data | "Remove the device logs project" |
 | 18 | [`clear_project_index`](#18-clear_project_index--clear-indexed-data) | Clear indexed data but keep project config | "Clear the device logs index" |
 | 19 | [`remove_file_from_index`](#19-remove_file_from_index--remove-a-files-chunks) | Remove a specific file's chunks from the index | "Remove device-26-04-28.log from the index" |
+| 20 | [`get_metrics`](#20-get_metrics--live-server-counters) | Live observability counters of the server process | "Show me the RAG server metrics" |
 
 ## Available Tools
 
@@ -349,6 +350,35 @@ path the chunk belongs to (e.g. `Section: Install > Quick Start`).
 - Falls back to partial/substring match if exact yields nothing
 - Returns confirmation with chunks deleted count
 - Does NOT modify config.yaml
+
+---
+
+### 20. get_metrics — Live server counters
+
+**What it does:** Returns the server's in-process observability counters as a JSON document:
+tool calls per tool (count, average/max duration, zero-result calls), embedding failures (by
+kind and error type) and log-epoch backfills that updated records. Counts start when the server
+starts and reset on restart.
+
+**When to use:** Health checks from chat ("is search returning nothing?", "are embeddings
+failing?"), or before filing a bug report. For history across restarts or `rag-mcp index` runs,
+use the CLI (`rag-mcp get_metrics`), which replays the JSONL event log on disk instead.
+
+**Example prompts:**
+- "Show me the RAG server metrics"
+- "How many embedding failures since the server started?"
+- "Which tool is slowest on average?"
+
+**Parameters:** none.
+
+**Behavior:**
+- Returns pretty-printed JSON with `source: "live"`, `process`, `tool_calls`, `embed_failures`
+  and `log_epoch_backfills` sections
+- Read-only; needs no model or index
+- Is NOT itself counted or logged as a tool call (metrics reads would inflate the numbers they
+  report)
+- Event format, counter semantics and the CLI: [OBSERVABILITY.md](OBSERVABILITY.md) /
+  `rag-mcp docs observability`
 
 ---
 
