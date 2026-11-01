@@ -127,7 +127,7 @@ rag-mcp serve
 
 > **Reading this from `pip show` / a package-index page instead of the repo?** This README's
 > links are relative paths into the `pow-mcp-rag-new` repo (GitHub/clone) and won't resolve from
-> an installed package alone. Three docs travel with the install and are available offline via
+> an installed package alone. Five docs travel with the install and are available offline via
 > `rag-mcp docs <name>` (see table below); the rest require the repo checkout.
 
 | Guide | Covers | Bundled in package? |
@@ -139,6 +139,7 @@ rag-mcp serve
 | [doc/TOOLS_GUIDE.md](doc/TOOLS_GUIDE.md) | Full MCP tool reference (21 tools) with usage examples | **Yes** — `rag-mcp docs tools` |
 | [doc/LOG_INDEXING_GUIDE.md](doc/LOG_INDEXING_GUIDE.md) | Structured log indexing usage guide | **Yes** — `rag-mcp docs log-indexing` |
 | [doc/LOG_PATTERN_CONFIGURATION.md](doc/LOG_PATTERN_CONFIGURATION.md) | How to write pattern configs for new log formats | **Yes** — `rag-mcp docs log-patterns` |
+| [doc/OBSERVABILITY.md](doc/OBSERVABILITY.md) | Structured JSON event log (tool calls, embedding failures, backfills), counters, `get_metrics` tool and CLI | **Yes** — `rag-mcp docs observability` |
 | [doc/TROUBLESHOOTING.md](doc/TROUBLESHOOTING.md) | Common issues and fixes | No — repo only |
 
 Run `rag-mcp docs` with no arguments to list the bundled docs from any install (pip, uvx,
@@ -162,6 +163,7 @@ Key tools:
 - `search_hex_pattern`, `find_function`, `find_variable` — exact text matching for codes/symbols
 - `search_logs`, `index_log_file` — structured log search and on-demand indexing
 - `add_project`, `add_pattern`, `remove_project` — index management from Kiro chat
+- `get_metrics` — live counters (tool calls, embedding failures, backfills); see [doc/OBSERVABILITY.md](doc/OBSERVABILITY.md)
 
 ## Log Indexing
 
