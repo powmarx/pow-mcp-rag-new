@@ -16,6 +16,9 @@ Usage:
     rag-mcp docs                 # list bundled docs
     rag-mcp docs cli              # print the full CLI reference
     rag-mcp docs <name>          # print a bundled doc to stdout
+    rag-mcp get_metrics          # replay the JSONL event log as a readable report
+    rag-mcp get_metrics --json   # same, raw JSON (same shape as the MCP tool)
+    rag-mcp get_metrics --file P # replay a specific events.jsonl
 """
 
 from __future__ import annotations
@@ -109,6 +112,45 @@ def _docs_main(args: list[str]) -> None:
         sys.stdout.buffer.write(b"\n")
 
 
+def _resolve_events_log_path(args: list[str]) -> Path:
+    """Where the JSONL event log lives, highest priority first:
+    --file PATH > RAG_OBSERVABILITY_LOG_PATH > <storage.path>/observability/events.jsonl
+    (storage.path resolved exactly like the server does, without touching ChromaDB)."""
+    import os
+    from rag_mcp import observability
+
+    if "--file" in args:
+        idx = args.index("--file")
+        if idx + 1 >= len(args):
+            print("Usage: rag-mcp get_metrics [--json] [--file PATH]", file=sys.stderr)
+            sys.exit(2)
+        return Path(args[idx + 1])
+
+    env = os.environ.get(observability.ENV_LOG_PATH, "").strip()
+    if env:
+        return Path(env)
+
+    from rag_mcp.config_loader import ConfigLoader
+    from rag_mcp.paths import resolve_config_path, resolve_data_path
+
+    config = ConfigLoader(resolve_config_path()).load()
+    storage_path = Path(config.storage.path)
+    if not storage_path.is_absolute():
+        storage_path = resolve_data_path()
+    return observability.default_log_path(storage_path)
+
+
+def _get_metrics_main(args: list[str]) -> None:
+    import json
+    from rag_mcp import observability
+
+    snapshot = observability.aggregate_events_from_log(_resolve_events_log_path(args))
+    if "--json" in args:
+        print(json.dumps(snapshot, indent=2))
+    else:
+        print(observability.format_metrics_text(snapshot))
+
+
 def main() -> None:
     """CLI dispatcher — routes subcommands to server or indexer logic."""
     from rag_mcp.paths import resolve_config_path, resolve_data_path
@@ -119,6 +161,9 @@ def main() -> None:
     match command:
         case "docs":
             _docs_main(args)
+
+        case "get_metrics":
+            _get_metrics_main(args[1:])
 
         case "config":
             cfg = resolve_config_path()
@@ -153,6 +198,7 @@ def main() -> None:
                 "  index    Index project files into ChromaDB\n"
                 "  config   Show resolved config and data paths\n"
                 "  docs     List or print bundled documentation (tools, log-indexing, log-patterns)\n"
+                "  get_metrics  Replay the JSONL event log (tool calls, embed failures, backfills); --json for raw output\n"
                 "\n"
                 "Run 'rag-mcp <command> --help' for command-specific options.\n",
                 file=sys.stderr,

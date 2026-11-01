@@ -6,6 +6,7 @@ Tools are organized by function:
 - documents.py:  Document retrieval, project listing, summaries
 - management.py: Project/file/folder addition and removal
 - logs.py:       Log search, indexing, cancellation
+- metrics.py:    Live observability counters (get_metrics)
 """
 
 from dataclasses import dataclass, field
@@ -35,9 +36,10 @@ class ToolContext:
 
 def register_all_tools(mcp, ctx: ToolContext) -> None:
     """Register all MCP tools from submodules."""
-    from rag_mcp.tools import search, documents, management, logs
+    from rag_mcp.tools import search, documents, management, logs, metrics
 
     search.register(mcp, ctx)
     documents.register(mcp, ctx)
     management.register(mcp, ctx)
     logs.register(mcp, ctx)
+    metrics.register(mcp, ctx)

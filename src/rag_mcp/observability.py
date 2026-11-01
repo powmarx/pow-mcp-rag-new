@@ -53,6 +53,16 @@ only when at least one record was updated; a no-op check emits nothing):
     records_missing  chunks that had no numeric epoch fields
     records_updated  chunks that received them (missing minus unparseable)
     duration_ms      wall-clock duration of the whole backfill, one decimal
+
+Counters
+--------
+Every emitted event is also folded into in-process counters (``_Counters``),
+exposed by ``get_metrics_snapshot()`` (live, this process only, reset on
+restart — what the ``get_metrics`` MCP tool returns). The same counter class
+replays the JSONL file via ``aggregate_events_from_log()`` (what the
+``rag-mcp get_metrics`` CLI prints), so live and replayed snapshots have an
+identical shape by construction; only ``source`` and the ``process`` /
+``file`` blocks differ.
 """
 
 from __future__ import annotations
@@ -154,6 +164,7 @@ def emit(event: str, message: str, level: str = "INFO", **fields: Any) -> dict[s
         "message": message,
     }
     record.update(fields)
+    _counters.ingest(record)
     line = _serialize(record)
     print(line, file=sys.stderr)
     _write_file_line(line)
@@ -264,3 +275,219 @@ def log_log_epoch_backfill_event(
         records_updated=records_updated,
         duration_ms=duration_ms,
     )
+
+
+# ---------------------------------------------------------------------------
+# Counters
+# ---------------------------------------------------------------------------
+
+_PROCESS_STARTED_AT = time.time()
+
+
+class _Counters:
+    """Thread-safe aggregate counters over events. Fed by ``emit()`` (live)
+    and by ``aggregate_events_from_log()`` (replay) through the same
+    ``ingest()`` method, so both paths produce the same numbers for the same
+    events."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.reset()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._tool_calls: dict[str, dict[str, Any]] = {}
+            self._embed_failures_by_kind: dict[str, int] = {}
+            self._embed_failures_by_error_type: dict[str, int] = {}
+            self._backfills_by_collection: dict[str, dict[str, int]] = {}
+
+    def ingest(self, record: dict[str, Any]) -> bool:
+        """Fold one event record into the counters. Unknown event types are
+        ignored (returns False) so old/new log files can be replayed safely."""
+        event = record.get("event")
+        with self._lock:
+            if event == "tool_call":
+                tool = str(record.get("tool", "?"))
+                duration = float(record.get("duration_ms") or 0.0)
+                result_count = record.get("result_count")
+                t = self._tool_calls.setdefault(
+                    tool, {"count": 0, "total_duration_ms": 0.0, "max_duration_ms": 0.0, "zero_result_calls": 0}
+                )
+                t["count"] += 1
+                t["total_duration_ms"] += duration
+                t["max_duration_ms"] = max(t["max_duration_ms"], duration)
+                if result_count == 0:
+                    t["zero_result_calls"] += 1
+                return True
+            if event == "embed_failure":
+                kind = str(record.get("kind", "?"))
+                error_type = str(record.get("error_type", "?"))
+                self._embed_failures_by_kind[kind] = self._embed_failures_by_kind.get(kind, 0) + 1
+                self._embed_failures_by_error_type[error_type] = (
+                    self._embed_failures_by_error_type.get(error_type, 0) + 1
+                )
+                return True
+            if event == "log_epoch_backfill":
+                collection = str(record.get("collection", "?"))
+                c = self._backfills_by_collection.setdefault(collection, {"events": 0, "records_updated": 0})
+                c["events"] += 1
+                c["records_updated"] += int(record.get("records_updated") or 0)
+                return True
+        return False
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            by_tool = {}
+            for tool in sorted(self._tool_calls):
+                t = self._tool_calls[tool]
+                by_tool[tool] = {
+                    "count": t["count"],
+                    "total_duration_ms": round(t["total_duration_ms"], 1),
+                    "avg_duration_ms": round(t["total_duration_ms"] / t["count"], 1),
+                    "max_duration_ms": round(t["max_duration_ms"], 1),
+                    "zero_result_calls": t["zero_result_calls"],
+                }
+            by_collection = {c: dict(v) for c, v in sorted(self._backfills_by_collection.items())}
+            return {
+                "tool_calls": {
+                    "total": sum(t["count"] for t in by_tool.values()),
+                    "by_tool": by_tool,
+                },
+                "embed_failures": {
+                    "total": sum(self._embed_failures_by_kind.values()),
+                    "by_kind": dict(sorted(self._embed_failures_by_kind.items())),
+                    "by_error_type": dict(sorted(self._embed_failures_by_error_type.items())),
+                },
+                "log_epoch_backfills": {
+                    # Only backfills that updated something emit an event, so
+                    # this is "backfills with updates", not "checks".
+                    "events": sum(c["events"] for c in by_collection.values()),
+                    "records_updated_total": sum(c["records_updated"] for c in by_collection.values()),
+                    "by_collection": by_collection,
+                },
+            }
+
+
+_counters = _Counters()
+
+
+def reset_counters() -> None:
+    """Zero the live counters (tests)."""
+    _counters.reset()
+
+
+def get_metrics_snapshot() -> dict[str, Any]:
+    """Live counters of THIS process (what the ``get_metrics`` MCP tool returns)."""
+    return {
+        "source": "live",
+        "process": {
+            "pid": os.getpid(),
+            "started_at": datetime.fromtimestamp(_PROCESS_STARTED_AT, timezone.utc)
+            .strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "uptime_seconds": round(time.time() - _PROCESS_STARTED_AT, 1),
+        },
+        **_counters.snapshot(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# JSONL replay (CLI)
+# ---------------------------------------------------------------------------
+
+
+def aggregate_events_from_log(path: str | Path) -> dict[str, Any]:
+    """Replay a JSONL events file into the same snapshot shape as
+    ``get_metrics_snapshot()``. Malformed or truncated lines (e.g. a crash
+    mid-write) and unknown event types are skipped and counted, never fatal.
+    A missing file yields an all-zero snapshot with ``file.exists == False``."""
+    path = Path(path)
+    counters = _Counters()
+    lines_total = lines_parsed = lines_skipped = 0
+    first_ts: str | None = None
+    last_ts: str | None = None
+    pids: set[int] = set()
+
+    if path.exists():
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line:
+                    continue
+                lines_total += 1
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    lines_skipped += 1
+                    continue
+                if not isinstance(record, dict) or not counters.ingest(record):
+                    lines_skipped += 1
+                    continue
+                lines_parsed += 1
+                ts = record.get("ts")
+                if isinstance(ts, str):
+                    first_ts = first_ts or ts
+                    last_ts = ts
+                if isinstance(record.get("pid"), int):
+                    pids.add(record["pid"])
+
+    return {
+        "source": "jsonl_replay",
+        "file": {
+            "path": str(path),
+            "exists": path.exists(),
+            "lines_total": lines_total,
+            "lines_parsed": lines_parsed,
+            "lines_skipped": lines_skipped,
+            "first_ts": first_ts,
+            "last_ts": last_ts,
+            "process_count": len(pids),
+        },
+        **counters.snapshot(),
+    }
+
+
+def format_metrics_text(snapshot: dict[str, Any]) -> str:
+    """Human-readable rendering of a live or replayed snapshot."""
+    out: list[str] = []
+    if snapshot.get("source") == "jsonl_replay":
+        f = snapshot["file"]
+        out.append(f"Event log : {f['path']}")
+        if not f["exists"]:
+            out.append("            (file not found — nothing has been logged yet)")
+        else:
+            span = f"{f['first_ts']} -> {f['last_ts']}" if f["first_ts"] else "-"
+            out.append(
+                f"Events    : {f['lines_parsed']} parsed, {f['lines_skipped']} skipped "
+                f"(malformed/unknown), {f['process_count']} process(es)"
+            )
+            out.append(f"Span      : {span}")
+    else:
+        p = snapshot["process"]
+        out.append(f"Process   : pid {p['pid']}, started {p['started_at']}, up {p['uptime_seconds']}s (live counters)")
+
+    tc = snapshot["tool_calls"]
+    out.append("")
+    out.append(f"Tool calls: {tc['total']}")
+    if tc["by_tool"]:
+        out.append(f"  {'tool':<24} {'calls':>6} {'avg ms':>9} {'max ms':>9} {'zero-result':>12}")
+        for tool, t in tc["by_tool"].items():
+            out.append(
+                f"  {tool:<24} {t['count']:>6} {t['avg_duration_ms']:>9.1f} "
+                f"{t['max_duration_ms']:>9.1f} {t['zero_result_calls']:>12}"
+            )
+
+    ef = snapshot["embed_failures"]
+    out.append("")
+    out.append(f"Embed failures: {ef['total']}")
+    if ef["total"]:
+        out.append("  by kind      : " + ", ".join(f"{k}={v}" for k, v in ef["by_kind"].items()))
+        out.append("  by error type: " + ", ".join(f"{k}={v}" for k, v in ef["by_error_type"].items()))
+
+    bf = snapshot["log_epoch_backfills"]
+    out.append("")
+    out.append(
+        f"Log-epoch backfills: {bf['events']} event(s), {bf['records_updated_total']} record(s) updated"
+    )
+    for collection, c in bf["by_collection"].items():
+        out.append(f"  {collection:<24} {c['events']} event(s), {c['records_updated']} updated")
+    return "\n".join(out)
