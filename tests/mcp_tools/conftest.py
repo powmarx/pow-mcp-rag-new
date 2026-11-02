@@ -72,25 +72,6 @@ if not os.environ.get("RAG_CONFIG_PATH"):
     os.environ["RAG_CONFIG_PATH"] = str(_cfg_path)
 
 import server
-import rag_mcp.tools.management as _management
-
-
-@pytest.fixture(autouse=True)
-def _restore_management_ctx():
-    """
-    Auto-use fixture: restore ``rag_mcp.tools.management._ctx`` after every test.
-
-    ``test_add_pattern.py`` replaces ``management._ctx`` with a local mock in
-    each test (``mgmt._ctx = ctx``) but never restores it.  Without this guard,
-    any test that runs after one of those tests sees the mock context instead of
-    the real server context and gets spurious "project not found" errors.
-
-    This fixture is *autouse* at the package level so it applies to every test
-    in the ``mcp_tools/`` package without requiring individual tests to opt in.
-    """
-    original_ctx = _management._ctx
-    yield
-    _management._ctx = original_ctx
 
 
 @pytest.fixture()

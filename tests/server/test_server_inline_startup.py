@@ -46,10 +46,9 @@ def inline_env(tmp_path, monkeypatch):
 
     _run_inline() calls register_all_tools(), which overwrites the
     module-level ``_ctx`` singleton in every rag_mcp.tools.* submodule
-    (search.py, documents.py, management.py, logs.py). Those singletons are
-    shared with the real server fixture used by other test modules
-    (tests/mcp_tools/*), so we snapshot and restore them here to avoid
-    leaking this test's fake ToolContext into unrelated tests.
+    (search.py, documents.py, management.py, logs.py). The autouse
+    ``_restore_tool_ctx`` fixture in tests/conftest.py restores them after
+    each test, so nothing leaks into unrelated tests.
     """
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
@@ -63,14 +62,6 @@ def inline_env(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("RAG_CONFIG_PATH", str(config_path))
     monkeypatch.setattr(sys, "argv", ["rag-mcp"])
-
-    import rag_mcp.tools.search as _search_mod
-    import rag_mcp.tools.documents as _documents_mod
-    import rag_mcp.tools.management as _management_mod
-    import rag_mcp.tools.logs as _logs_mod
-
-    for mod in (_search_mod, _documents_mod, _management_mod, _logs_mod):
-        monkeypatch.setattr(mod, "_ctx", mod._ctx)
 
     return config_path
 
