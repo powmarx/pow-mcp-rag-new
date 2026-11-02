@@ -135,7 +135,7 @@ rag-mcp serve
 | [doc/DOCKER_GUIDE.md](doc/DOCKER_GUIDE.md) | Full Docker setup, adding/removing projects, HTTP server, complete CLI reference (Docker mode) | No — repo only |
 | [doc/PIP_INSTALL_GUIDE.md](doc/PIP_INSTALL_GUIDE.md) | Local PyPI + uvx setup, pip installation, config seeding, building/publishing the wheel| No — repo only |
 | [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | How indexing/retrieval works, embedding model, PDF handling, file structure | No — repo only |
-| [doc/CLI_REFERENCE.md](doc/CLI_REFERENCE.md) | Full `rag-mcp` CLI reference: `serve`/`index`/`config`/`docs`, all flags and env vars | **Yes** — `rag-mcp docs cli` |
+| [doc/CLI_REFERENCE.md](doc/CLI_REFERENCE.md) | Full `rag-mcp` CLI reference: `serve`/`index`/`config`/`docs`/`get_metrics`, all flags and env vars | **Yes** — `rag-mcp docs cli` |
 | [doc/TOOLS_GUIDE.md](doc/TOOLS_GUIDE.md) | Full MCP tool reference (21 tools) with usage examples | **Yes** — `rag-mcp docs tools` |
 | [doc/LOG_INDEXING_GUIDE.md](doc/LOG_INDEXING_GUIDE.md) | Structured log indexing usage guide | **Yes** — `rag-mcp docs log-indexing` |
 | [doc/LOG_PATTERN_CONFIGURATION.md](doc/LOG_PATTERN_CONFIGURATION.md) | How to write pattern configs for new log formats | **Yes** — `rag-mcp docs log-patterns` |

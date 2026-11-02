@@ -33,6 +33,23 @@ def _suppress_fastmcp_lifespan_warning() -> None:
     )
 
 
+def find_server_script() -> Path | None:
+    """Locate server.py: next to src/ (repo layout) or installed as package data.
+
+    Returns None for a pure pip/uvx package, where ``main()`` falls back to
+    ``_run_inline()``. Also used by the CLI (``rag-mcp get_metrics``) to resolve a
+    relative ``storage.path`` the same way the server that would actually run does:
+    server.py resolves it against its own directory, the inline fallback against
+    ``resolve_data_path()``.
+    """
+    here = Path(__file__).parent
+    candidates = [
+        here.parent.parent / "server.py",                  # repo root
+        Path(sys.prefix) / "lib" / "rag_mcp" / "server.py",  # installed
+    ]
+    return next((p for p in candidates if p.exists()), None)
+
+
 def main() -> None:
     """Run the MCP server. Delegates to server.py logic."""
     # Ensure src/ is on the path when running as an installed package
@@ -42,13 +59,7 @@ def main() -> None:
     if str(src_dir) not in sys.path:
         sys.path.insert(0, str(src_dir))
 
-    # Locate server.py: next to src/ (repo layout) or installed as package data
-    candidates = [
-        here.parent.parent / "server.py",                  # repo root
-        Path(sys.prefix) / "lib" / "rag_mcp" / "server.py",  # installed
-    ]
-
-    server_py = next((p for p in candidates if p.exists()), None)
+    server_py = find_server_script()
 
     if server_py:
         # Run server.py as __main__ so its module-level startup code executes

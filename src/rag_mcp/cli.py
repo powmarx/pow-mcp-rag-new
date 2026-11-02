@@ -116,7 +116,11 @@ def _docs_main(args: list[str]) -> None:
 def _resolve_events_log_path(args: list[str]) -> Path:
     """Where the JSONL event log lives, highest priority first:
     --file PATH > RAG_OBSERVABILITY_LOG_PATH > <storage.path>/observability/events.jsonl
-    (storage.path resolved exactly like the server does, without touching ChromaDB)."""
+
+    A relative storage.path is resolved the way the server that `rag-mcp serve`
+    would run resolves it: against server.py's directory when server.py is on
+    disk (repo checkout, Docker), else against resolve_data_path() (pip/uvx
+    inline server). ChromaDB is never opened."""
     import os
     from rag_mcp import observability
 
@@ -131,13 +135,15 @@ def _resolve_events_log_path(args: list[str]) -> Path:
     if env:
         return Path(env)
 
+    from rag_mcp._server import find_server_script
     from rag_mcp.config_loader import ConfigLoader
     from rag_mcp.paths import resolve_config_path, resolve_data_path
 
     config = ConfigLoader(resolve_config_path()).load()
     storage_path = Path(config.storage.path)
     if not storage_path.is_absolute():
-        storage_path = resolve_data_path()
+        server_py = find_server_script()
+        storage_path = (server_py.parent / storage_path) if server_py else resolve_data_path()
     return observability.default_log_path(storage_path)
 
 

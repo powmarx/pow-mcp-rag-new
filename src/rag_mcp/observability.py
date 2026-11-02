@@ -23,7 +23,7 @@ Design constraints:
 Event envelope (common to all event types):
 
     ts        ISO 8601 UTC with millisecond precision, e.g. 2026-04-28T05:10:00.123Z
-    level     INFO | WARNING | ERROR
+    level     INFO (tool_call, log_epoch_backfill) | ERROR (embed_failure)
     event     event type discriminator, e.g. "tool_call"
     pid       OS process id (server and indexer are separate processes)
     message   human-readable one-line summary (kept so stderr stays greppable)

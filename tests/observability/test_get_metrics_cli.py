@@ -146,15 +146,46 @@ def test_default_path_derived_from_config_storage_path(tmp_path, monkeypatch, ca
     assert snap["tool_calls"]["total"] == 1
 
 
-def test_relative_storage_path_falls_back_to_data_dir(tmp_path, monkeypatch, capsys):
-    """Mirrors _server.py: a relative storage.path means 'use the XDG/RAG_DATA_PATH data dir'."""
+def test_relative_storage_path_pip_mode_uses_data_dir(tmp_path, monkeypatch, capsys):
+    """No server.py on disk (pip/uvx): mirrors _server._run_inline -> resolve_data_path()."""
+    from rag_mcp import _server
+
     cfg = tmp_path / "config.yaml"
     cfg.write_text("storage:\n  path: './data'\nprojects: []\n", encoding="utf-8")
     monkeypatch.setenv("RAG_CONFIG_PATH", str(cfg))
     monkeypatch.setenv("RAG_DATA_PATH", str(tmp_path / "data-dir"))
+    monkeypatch.setattr(_server, "find_server_script", lambda: None)
 
     snap = json.loads(_run_cli(monkeypatch, capsys, "--json"))
     assert snap["file"]["path"] == str(observability.default_log_path(tmp_path / "data-dir"))
+
+
+def test_relative_storage_path_repo_mode_uses_server_py_dir(tmp_path, monkeypatch, capsys):
+    """server.py on disk (repo checkout, Docker): mirrors server.py -> SCRIPT_DIR / storage.path."""
+    from rag_mcp import _server
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("storage:\n  path: './data'\nprojects: []\n", encoding="utf-8")
+    monkeypatch.setenv("RAG_CONFIG_PATH", str(cfg))
+    monkeypatch.setenv("RAG_DATA_PATH", str(tmp_path / "data-dir"))  # must be ignored in this mode
+    fake_server_py = tmp_path / "app" / "server.py"
+    monkeypatch.setattr(_server, "find_server_script", lambda: fake_server_py)
+
+    snap = json.loads(_run_cli(monkeypatch, capsys, "--json"))
+    assert snap["file"]["path"] == str(observability.default_log_path(tmp_path / "app" / "data"))
+
+
+def test_real_repo_checkout_cli_and_server_py_agree(tmp_path, monkeypatch, capsys):
+    """End to end in this checkout: the path the CLI resolves == the one server.py configures."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("storage:\n  path: './data'\nprojects: []\n", encoding="utf-8")
+    monkeypatch.setenv("RAG_CONFIG_PATH", str(cfg))
+    monkeypatch.delenv("RAG_DATA_PATH", raising=False)
+
+    snap = json.loads(_run_cli(monkeypatch, capsys, "--json"))
+    server_py = _REPO_ROOT / "server.py"
+    assert server_py.exists()
+    assert snap["file"]["path"] == str(observability.default_log_path(server_py.parent / "data"))
 
 
 # ---------------------------------------------------------------------------
