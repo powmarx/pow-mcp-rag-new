@@ -240,7 +240,6 @@ A typical system log configuration defines a set of prioritized patterns like th
 | 30 | `system_dispatch_call` | command | Dispatch/transport call to downstream service or hardware |
 | 35 | `system_dispatch_error` | error | Transport-level error code from downstream call |
 | 40 | `api_err_code` | error | ERROR lines with structured codes (e.g. `ret_code=`, `error_code=`) |
-| 45 | `api_err_command_error` | error | `execute: ERROR - [N]` — API-level error |
 | 50 | `api_err_generic` | error | Any remaining ERROR lines |
 | 60 | `system_warning` | warning | WARN lines |
 | 70 | `system_lifecycle` | state_change | INIT/SHUTDOWN or begin/end function markers |
