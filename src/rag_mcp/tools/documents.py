@@ -1,11 +1,9 @@
 """Document retrieval tools: get_document, list_projects, list_files, get_project_summary, compare_projects."""
 
-import time
-
 import anyio
 
 from rag_mcp.tools import ToolContext
-from rag_mcp.tools.helpers import log_tool_call, validate_path
+from rag_mcp.tools.helpers import ToolCall, validate_path
 
 _ctx: ToolContext | None = None
 
@@ -33,20 +31,19 @@ def get_document(file_path: str, project: str) -> str:
     Returns:
         Full reconstructed document content from indexed chunks
     """
-    start_time = time.time()
+    call = ToolCall("get_document", {"file_path": file_path, "project": project})
 
     # Validate path
     path_error = validate_path(file_path)
     if path_error:
-        return f"Error: {path_error}"
+        return call.error(f"Error: {path_error}")
 
     if not project:
-        return "Error: project is required."
+        return call.error("Error: project is required.")
 
     collection = _ctx.store.get_collection(project)
     if collection is None:
-        log_tool_call("get_document", {"file_path": file_path, "project": project}, start_time, 0)
-        return f"Error: Project '{project}' not found. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{project}' not found. Use list_projects() to see available projects.")
 
     results = collection.get(
         where={"file_path": file_path},
@@ -54,8 +51,7 @@ def get_document(file_path: str, project: str) -> str:
     )
 
     if not results["ids"]:
-        log_tool_call("get_document", {"file_path": file_path, "project": project}, start_time, 0)
-        return f"Error: Document '{file_path}' not found in project '{project}'."
+        return call.error(f"Error: Document '{file_path}' not found in project '{project}'.")
 
     # Sort chunks by index and reconstruct
     chunks_with_index = []
@@ -66,13 +62,12 @@ def get_document(file_path: str, project: str) -> str:
     chunks_with_index.sort(key=lambda x: x[0])
     content = "\n".join(chunk for _, chunk in chunks_with_index)
 
-    log_tool_call("get_document", {"file_path": file_path, "project": project}, start_time, len(chunks_with_index))
-
-    return (
+    return call.ok(
+        len(chunks_with_index),
         f"Document: {file_path}\n"
         f"Project: {project}\n"
         f"Chunks: {len(chunks_with_index)}\n"
-        f"---\n{content}"
+        f"---\n{content}",
     )
 
 
@@ -83,13 +78,12 @@ def list_projects() -> str:
     Returns:
         List of projects with document counts and descriptions
     """
-    start_time = time.time()
+    call = ToolCall("list_projects", {})
 
     collections_meta = _ctx.store.list_collections()
 
     if not collections_meta:
-        log_tool_call("list_projects", {}, start_time, 0)
-        return "No projects indexed yet. Run 'python indexer.py' to index your projects."
+        return call.ok(0, "No projects indexed yet. Run 'python indexer.py' to index your projects.")
 
     output_parts = []
     if _ctx.reindex_in_progress():
@@ -121,8 +115,7 @@ def list_projects() -> str:
             f"    Indexed chunks: {count}\n"
         )
 
-    log_tool_call("list_projects", {}, start_time, len(collections_meta))
-    return "\n".join(output_parts)
+    return call.ok(len(collections_meta), "\n".join(output_parts))
 
 
 def list_files(project: str, file_type: str = "") -> str:
@@ -136,15 +129,14 @@ def list_files(project: str, file_type: str = "") -> str:
     Returns:
         List of indexed file paths with their types
     """
-    start_time = time.time()
+    call = ToolCall("list_files", {"project": project, "file_type": file_type})
 
     if not project:
-        return "Error: project is required."
+        return call.error("Error: project is required.")
 
     collection = _ctx.store.get_collection(project)
     if collection is None:
-        log_tool_call("list_files", {"project": project, "file_type": file_type}, start_time, 0)
-        return f"Error: Project '{project}' not found."
+        return call.error(f"Error: Project '{project}' not found.")
 
     # Get all metadata
     where_filter = {"file_type": file_type} if file_type else None
@@ -154,13 +146,12 @@ def list_files(project: str, file_type: str = "") -> str:
             include=["metadatas"],
         )
     except Exception as e:
-        log_tool_call("list_files", {"project": project, "file_type": file_type}, start_time, 0)
-        return f"Error querying collection: {e}"
+        return call.error(f"Error querying collection: {e}")
 
     if not results["ids"]:
-        log_tool_call("list_files", {"project": project, "file_type": file_type}, start_time, 0)
-        return f"No files found in project '{project}'" + (
-            f" with type '{file_type}'" if file_type else ""
+        return call.ok(
+            0,
+            f"No files found in project '{project}'" + (f" with type '{file_type}'" if file_type else ""),
         )
 
     # Deduplicate by file path
@@ -181,8 +172,7 @@ def list_files(project: str, file_type: str = "") -> str:
 
     output_parts.append(f"\nTotal: {len(sorted_files)} files")
 
-    log_tool_call("list_files", {"project": project, "file_type": file_type}, start_time, len(sorted_files))
-    return "\n".join(output_parts)
+    return call.ok(len(sorted_files), "\n".join(output_parts))
 
 
 def get_project_summary(project: str) -> str:
@@ -195,20 +185,20 @@ def get_project_summary(project: str) -> str:
     Returns:
         Project summary with statistics
     """
-    start_time = time.time()
+    call = ToolCall("get_project_summary", {"project": project})
 
     if not project:
-        return "Error: project is required."
+        return call.error("Error: project is required.")
 
     collection = _ctx.store.get_collection(project)
     if collection is None:
-        return f"Error: Project '{project}' not found."
+        return call.error(f"Error: Project '{project}' not found.")
 
     # Get all metadata
     results = collection.get(include=["metadatas"])
 
     if not results["ids"]:
-        return f"Project '{project}' is indexed but has no chunks."
+        return call.ok(0, f"Project '{project}' is indexed but has no chunks.")
 
     # Count by file type
     type_counts = {}
@@ -247,8 +237,7 @@ def get_project_summary(project: str) -> str:
         chunk_count = type_counts[ft]
         output_parts.append(f"  [{ft}] {file_count} files, {chunk_count} chunks")
 
-    log_tool_call("get_project_summary", {"project": project}, start_time, total_files)
-    return "\n".join(output_parts)
+    return call.ok(total_files, "\n".join(output_parts))
 
 
 async def compare_projects(query: str, project_a: str, project_b: str, top_k: int = 3) -> str:
@@ -272,12 +261,12 @@ def _compare_projects_sync(query: str, project_a: str, project_b: str, top_k: in
     """Synchronous implementation of compare_projects (runs in thread pool)."""
     from rag_mcp.tools.search import _search_docs_sync
 
-    start_time = time.time()
+    call = ToolCall("compare_projects", {"query": query, "project_a": project_a, "project_b": project_b})
 
     if not query:
-        return "Error: query is required."
+        return call.error("Error: query is required.")
     if not project_a or not project_b:
-        return "Error: both project_a and project_b are required."
+        return call.error("Error: both project_a and project_b are required.")
 
     results_a = _search_docs_sync(query=query, project=project_a, top_k=top_k)
     results_b = _search_docs_sync(query=query, project=project_b, top_k=top_k)
@@ -294,5 +283,4 @@ def _compare_projects_sync(query: str, project_a: str, project_b: str, top_k: in
         results_b,
     ]
 
-    log_tool_call("compare_projects", {"query": query, "project_a": project_a, "project_b": project_b}, start_time, 0)
-    return "\n".join(output)
+    return call.ok(0, "\n".join(output))

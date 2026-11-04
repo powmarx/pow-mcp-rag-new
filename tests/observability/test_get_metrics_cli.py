@@ -98,6 +98,30 @@ def test_json_flag_prints_raw_snapshot(events_file, monkeypatch, capsys):
     assert snap["log_epoch_backfills"]["by_collection"] == {"rag_logs": {"events": 1, "records_updated": 3}}
 
 
+def test_error_calls_in_text_and_json_reports(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "events.jsonl"
+    observability.configure(path)
+    log_tool_call("search_docs", {"query": "a"}, time.time(), 2)
+    log_tool_call("search_docs", {"query": "", "project": "nope"}, time.time(), 0, outcome="error", error="Error: nf")
+    observability.configure(None)
+    capsys.readouterr()
+
+    text = _run_cli(monkeypatch, capsys, "--file", str(path))
+    assert "Tool calls: 2 (1 error)" in text
+    lines = text.splitlines()
+    header = lines[lines.index("Tool calls: 2 (1 error)") + 1]
+    assert "errors" in header.split()
+    row = next(ln for ln in lines if ln.startswith("  search_docs")).split()
+    assert row[1:3] == ["2", "1"]   # calls, errors
+    assert row[-1] == "0"           # zero-result: the error is not an empty call
+
+    snap = json.loads(_run_cli(monkeypatch, capsys, "--json", "--file", str(path)))
+    assert snap["tool_calls"]["errors"] == 1
+    assert snap["tool_calls"]["by_tool"]["search_docs"] == {
+        **snap["tool_calls"]["by_tool"]["search_docs"], "count": 2, "error_calls": 1, "zero_result_calls": 0,
+    }
+
+
 def test_json_output_has_same_sections_as_mcp_tool(events_file, monkeypatch, capsys):
     from rag_mcp.tools import metrics as metrics_mod
 

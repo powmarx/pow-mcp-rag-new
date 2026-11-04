@@ -1,15 +1,55 @@
 """Shared helper functions used across tool modules."""
 
+import time
+from typing import Any
+
 from rag_mcp import observability
 
 
-def log_tool_call(tool_name: str, params: dict, start_time: float, result_count: int):
+def log_tool_call(
+    tool_name: str,
+    params: dict,
+    start_time: float,
+    result_count: int,
+    outcome: str = "ok",
+    error: str | None = None,
+):
     """Log a tool invocation as one structured ``tool_call`` JSON line.
 
     Written to stderr and appended to the JSONL events file (see
-    ``rag_mcp.observability``). Signature unchanged so call sites are untouched.
+    ``rag_mcp.observability``). ``outcome`` is ``"ok"`` (default) or
+    ``"error"``; on error pass the text returned to the client as ``error``.
+    Positional signature unchanged so existing call sites are untouched.
     """
-    observability.log_tool_call_event(tool_name, params, start_time, result_count)
+    observability.log_tool_call_event(tool_name, params, start_time, result_count, outcome, error)
+
+
+class ToolCall:
+    """One tool invocation: captures name, params and start time at entry.
+
+    Every return path of a tool body goes through exactly one of::
+
+        return call.ok(result_count, text)   # emits outcome="ok"
+        return call.error(text)              # emits outcome="error", result_count=0
+
+    Both return ``text`` unchanged, so the client sees exactly the same
+    string as before and each invocation emits exactly one ``tool_call``.
+    """
+
+    __slots__ = ("tool", "params", "start_time")
+
+    def __init__(self, tool: str, params: dict[str, Any]):
+        self.tool = tool
+        self.params = params
+        self.start_time = time.time()
+
+    def ok(self, result_count: int, text: str) -> str:
+        log_tool_call(self.tool, self.params, self.start_time, result_count)
+        return text
+
+    def error(self, text: str) -> str:
+        log_tool_call(self.tool, self.params, self.start_time, 0, outcome="error", error=text)
+        return text
 
 
 def validate_path(file_path: str) -> str | None:

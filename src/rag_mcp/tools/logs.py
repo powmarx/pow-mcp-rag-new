@@ -13,7 +13,7 @@ from rag_mcp.log.timestamps import (
     parse_time_filter,
 )
 from rag_mcp.tools import ToolContext
-from rag_mcp.tools.helpers import log_tool_call
+from rag_mcp.tools.helpers import ToolCall
 
 _ctx: ToolContext | None = None
 
@@ -261,13 +261,13 @@ def _search_logs_sync(
     top_k: int = 20,
 ) -> str:
     """Synchronous implementation of search_logs (runs in thread pool)."""
-    start_time = time.time()
+    call = ToolCall("search_logs", {"query": query, "project": project, "severity": severity, "top_k": top_k})
 
     # --- Parameter validation ---
 
     # Validate severity
     if severity and severity.upper() not in _VALID_SEVERITIES:
-        return (
+        return call.error(
             f"Error: Invalid severity '{severity}'. "
             f"Must be one of: {', '.join(sorted(_VALID_SEVERITIES))}."
         )
@@ -279,15 +279,15 @@ def _search_logs_sync(
         or error_code_pattern or device_id or event_type or project
     )
     if not has_query and not has_filter:
-        return "Error: At least one of 'query' or a filter parameter must be provided."
+        return call.error("Error: At least one of 'query' or a filter parameter must be provided.")
 
     # Validate query length
     if query and len(query) > 512:
-        return "Error: query must not exceed 512 characters."
+        return call.error("Error: query must not exceed 512 characters.")
 
     # Validate error_code_pattern length
     if error_code_pattern and len(error_code_pattern) > 32:
-        return "Error: error_code_pattern must not exceed 32 characters."
+        return call.error("Error: error_code_pattern must not exceed 32 characters.")
 
     # Validate and convert time range to epoch seconds (never silently ignored)
     start_epoch: float | None = None
@@ -298,9 +298,9 @@ def _search_logs_sync(
         if time_range_end:
             end_epoch = parse_time_filter(time_range_end, "time_range_end")
     except ValueError as e:
-        return f"Error: {e}"
+        return call.error(f"Error: {e}")
     if start_epoch is not None and end_epoch is not None and start_epoch > end_epoch:
-        return "Error: time_range_start must not be after time_range_end."
+        return call.error("Error: time_range_start must not be after time_range_end.")
     has_time_filter = start_epoch is not None or end_epoch is not None
 
     # Clamp top_k to [1, 50]
@@ -310,7 +310,7 @@ def _search_logs_sync(
     if project:
         collection = _ctx.store.get_collection(project)
         if collection is None:
-            return f"Error: Project '{project}' not found. Use list_projects() to see available projects."
+            return call.error(f"Error: Project '{project}' not found. Use list_projects() to see available projects.")
         collections_to_search = [(project, collection)]
     else:
         collections_meta = _ctx.store.list_collections()
@@ -325,7 +325,7 @@ def _search_logs_sync(
                 continue
 
     if not collections_to_search:
-        return "No indexed collections found. Run 'python indexer.py' first."
+        return call.error("No indexed collections found. Run 'python indexer.py' first.")
 
     # --- Build where clause ---
     where_filter = _build_log_where_filter(
@@ -412,7 +412,7 @@ def _search_logs_sync(
 
     # Every collection failed: report it instead of pretending there were no matches.
     if errors and len(errors) == len(collections_to_search):
-        return "Error: search_logs failed for all collections.\n" + "\n".join(errors)
+        return call.error("Error: search_logs failed for all collections.\n" + "\n".join(errors))
 
     # --- Post-filter for error_code_pattern (prefix match) ---
     if error_code_pattern:
@@ -431,14 +431,7 @@ def _search_logs_sync(
 
     all_results = all_results[:top_k]
 
-    log_tool_call(
-        "search_logs",
-        {"query": query, "project": project, "severity": severity, "top_k": top_k},
-        start_time,
-        len(all_results),
-    )
-
-    return _format_log_results(all_results)
+    return call.ok(len(all_results), _format_log_results(all_results))
 
 
 async def index_log_file(
@@ -472,10 +465,10 @@ def _index_log_file_sync(
     """Synchronous implementation of index_log_file (runs in thread pool)."""
     import glob as _glob
 
-    start_time = time.time()
+    call = ToolCall("index_log_file", {"file": file, "project": project, "time_from": time_from, "time_to": time_to})
 
     if not project or not project.strip():
-        return "Error: project is required."
+        return call.error("Error: project is required.")
 
     # Reset cancellation flag
     _ctx.set_indexing_cancelled(False)
@@ -488,15 +481,15 @@ def _index_log_file_sync(
             break
 
     if project_config is None:
-        return f"Error: Project '{project}' not found. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{project}' not found. Use list_projects() to see available projects.")
 
     if project_config.removed:
-        return f"Error: Project '{project}' is marked as removed. Re-add it first with add_project()."
+        return call.error(f"Error: Project '{project}' is marked as removed. Re-add it first with add_project().")
 
     # Find log sources in the project
     log_sources = [s for s in project_config.sources if s.type == "log"]
     if not log_sources:
-        return f"Error: Project '{project}' has no log-type sources configured."
+        return call.error(f"Error: Project '{project}' has no log-type sources configured.")
 
     # Validate time format
     def _parse_time(t: str) -> str | None:
@@ -520,9 +513,9 @@ def _index_log_file_sync(
     parsed_to = _parse_time(time_to) if time_to else None
 
     if time_from and parsed_from is None:
-        return f"Error: Invalid time_from format '{time_from}'. Use HH:MM:SS (e.g., '14:00:00')."
+        return call.error(f"Error: Invalid time_from format '{time_from}'. Use HH:MM:SS (e.g., '14:00:00').")
     if time_to and parsed_to is None:
-        return f"Error: Invalid time_to format '{time_to}'. Use HH:MM:SS (e.g., '15:30:00')."
+        return call.error(f"Error: Invalid time_to format '{time_to}'. Use HH:MM:SS (e.g., '15:30:00').")
 
     # Lazy load model
     _ctx.ensure_model_loaded()
@@ -539,7 +532,7 @@ def _index_log_file_sync(
                 matched_files.append((fp, source))
 
     if not matched_files:
-        return f"Error: No log files matching '{file}' found in project '{project}' (base: {base_path})."
+        return call.error(f"Error: No log files matching '{file}' found in project '{project}' (base: {base_path}).")
 
     # Import pipeline components
     from rag_mcp.log.parsing.config_models import LogSettings
@@ -694,14 +687,7 @@ def _index_log_file_sync(
             file=sys.stderr,
         )
 
-    elapsed_ms = (time.time() - start_time) * 1000
-
-    log_tool_call(
-        "index_log_file",
-        {"file": file, "project": project, "time_from": time_from, "time_to": time_to},
-        start_time,
-        total_chunks,
-    )
+    elapsed_ms = (time.time() - call.start_time) * 1000
 
     # Format output
     output_parts = [
@@ -714,4 +700,4 @@ def _index_log_file_sync(
     output_parts.append(f"\nResults ({len(matched_files)} file(s)):")
     output_parts.extend(results_summary)
 
-    return "\n".join(output_parts)
+    return call.ok(total_chunks, "\n".join(output_parts))

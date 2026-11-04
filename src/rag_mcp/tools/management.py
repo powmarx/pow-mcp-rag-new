@@ -1,13 +1,12 @@
 """Project/file/folder management tools: add, remove, clear."""
 
 import sys
-import time
 from pathlib import Path
 
 import anyio
 
 from rag_mcp.tools import ToolContext
-from rag_mcp.tools.helpers import FILE_TYPE_MAP, log_tool_call
+from rag_mcp.tools.helpers import FILE_TYPE_MAP, ToolCall
 
 _ctx: ToolContext | None = None
 
@@ -42,18 +41,18 @@ async def add_project(name: str, path: str) -> str:
 
 def _add_project_sync(name: str, path: str) -> str:
     """Synchronous implementation of add_project (runs in thread pool)."""
-    start_time = time.time()
+    call = ToolCall("add_project", {"name": name, "path": path})
 
     if not name or not name.strip():
-        return "Error: name is required."
+        return call.error("Error: name is required.")
     if not path or not path.strip():
-        return "Error: path is required."
+        return call.error("Error: path is required.")
 
     project_path = Path(path)
     if not project_path.exists():
-        return f"Error: Path does not exist: {path}"
+        return call.error(f"Error: Path does not exist: {path}")
     if not project_path.is_dir():
-        return f"Error: Path is not a directory: {path}"
+        return call.error(f"Error: Path is not a directory: {path}")
 
     existing_names = {p.name for p in _ctx.config.projects}
     if name in existing_names:
@@ -62,12 +61,12 @@ def _add_project_sync(name: str, path: str) -> str:
             if p.name == name and p.removed:
                 p.removed = False
                 _ctx.loader.save(_ctx.config)
-                log_tool_call("add_project", {"name": name, "path": path}, start_time, 0)
-                return (
+                return call.ok(
+                    0,
                     f"Project '{name}' re-activated (was previously removed).\n"
-                    f"  Configuration preserved. Run index_log_file or reindex to populate data."
+                    f"  Configuration preserved. Run index_log_file or reindex to populate data.",
                 )
-        return f"Error: Project '{name}' already exists. Use a different name."
+        return call.error(f"Error: Project '{name}' already exists. Use a different name.")
 
     from rag_mcp.chunker import Chunker, chunk_metadatas
     from rag_mcp.config_loader import ProjectConfig
@@ -79,7 +78,7 @@ def _add_project_sync(name: str, path: str) -> str:
     sources = build_source_patterns(project_path, _ctx.config)
 
     if not sources:
-        return f"No code or doc/spec files found in: {path}"
+        return call.error(f"No code or doc/spec files found in: {path}")
 
     new_project = ProjectConfig(
         name=name,
@@ -122,23 +121,23 @@ def _add_project_sync(name: str, path: str) -> str:
         try:
             _ctx.loader.save(_ctx.config)
         except Exception as save_error:
-            return (
+            return call.error(
                 f"Error: Indexing failed for project '{name}': {e}\n"
                 f"  Additionally, rolling back config.yaml failed: {save_error}"
             )
-        return (
+        return call.error(
             f"Error: Indexing failed for project '{name}': {e}\n"
             f"  Config rolled back — project was not added."
         )
 
     if chunks == 0:
-        log_tool_call("add_project", {"name": name, "path": path}, start_time, 0)
-        return (
+        return call.ok(
+            0,
             f"Project '{name}' added to config but 0 chunks were indexed.\n"
             f"Path: {path}\n"
             f"Patterns detected: {len(sources)}\n"
             f"  The project was kept in config.yaml (patterns may match files later).\n"
-            f"  Re-run indexing once matching content exists."
+            f"  Re-run indexing once matching content exists.",
         )
 
     output_parts = [
@@ -151,8 +150,7 @@ def _add_project_sync(name: str, path: str) -> str:
     for s in sources:
         output_parts.append(f"  [{s.type}] {s.pattern} - {s.description}")
 
-    log_tool_call("add_project", {"name": name, "path": path}, start_time, chunks)
-    return "\n".join(output_parts)
+    return call.ok(chunks, "\n".join(output_parts))
 
 
 async def add_file(file_path: str, project: str) -> str:
@@ -172,18 +170,18 @@ async def add_file(file_path: str, project: str) -> str:
 
 def _add_file_sync(file_path: str, project: str) -> str:
     """Synchronous implementation of add_file (runs in thread pool)."""
-    start_time = time.time()
+    call = ToolCall("add_file", {"file_path": file_path, "project": project})
 
     if not file_path or not file_path.strip():
-        return "Error: file_path is required."
+        return call.error("Error: file_path is required.")
     if not project or not project.strip():
-        return "Error: project is required."
+        return call.error("Error: project is required.")
 
     target = Path(file_path)
     if not target.exists():
-        return f"Error: File does not exist: {file_path}"
+        return call.error(f"Error: File does not exist: {file_path}")
     if not target.is_file():
-        return f"Error: Path is not a file: {file_path}"
+        return call.error(f"Error: Path is not a file: {file_path}")
 
     # Find the project in config
     project_config = None
@@ -193,11 +191,11 @@ def _add_file_sync(file_path: str, project: str) -> str:
             break
 
     if project_config is None:
-        return f"Error: Project '{project}' not found. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{project}' not found. Use list_projects() to see available projects.")
 
     collection = _ctx.store.get_collection(project)
     if collection is None:
-        return f"Error: Project '{project}' has no index. Run the indexer first."
+        return call.error(f"Error: Project '{project}' has no index. Run the indexer first.")
 
     # Read the file
     from rag_mcp.chunker import Chunker, chunk_metadatas
@@ -216,13 +214,13 @@ def _add_file_sync(file_path: str, project: str) -> str:
 
     content = file_reader.read(target, base_path if target.is_relative_to(base_path) else target.parent)
     if content is None:
-        return f"Error: Could not read file (binary or encoding issue): {file_path}"
+        return call.error(f"Error: Could not read file (binary or encoding issue): {file_path}")
 
     # Chunk and embed
     chunker = Chunker(_ctx.config.chunking)
     chunks = chunker.chunk(content.content)
     if not chunks:
-        return f"Error: File produced no chunks (empty content): {file_path}"
+        return call.error(f"Error: File produced no chunks (empty content): {file_path}")
 
     _ctx.ensure_model_loaded()
 
@@ -260,14 +258,14 @@ def _add_file_sync(file_path: str, project: str) -> str:
         ))
         _ctx.loader.save(_ctx.config)
 
-    log_tool_call("add_file", {"file_path": file_path, "project": project}, start_time, len(chunks))
-    return (
+    return call.ok(
+        len(chunks),
         f"File indexed and saved to config!\n"
         f"  File: {relative_str}\n"
         f"  Project: {project}\n"
         f"  Type: {file_type}\n"
         f"  Chunks: {len(chunks)}\n"
-        f"  Persisted: will be re-indexed automatically"
+        f"  Persisted: will be re-indexed automatically",
     )
 
 
@@ -289,18 +287,18 @@ async def add_folder(folder_path: str, project: str, pattern: str = "**/*") -> s
 
 def _add_folder_sync(folder_path: str, project: str, pattern: str = "**/*") -> str:
     """Synchronous implementation of add_folder (runs in thread pool)."""
-    start_time = time.time()
+    call = ToolCall("add_folder", {"folder_path": folder_path, "project": project, "pattern": pattern})
 
     if not folder_path or not folder_path.strip():
-        return "Error: folder_path is required."
+        return call.error("Error: folder_path is required.")
     if not project or not project.strip():
-        return "Error: project is required."
+        return call.error("Error: project is required.")
 
     target_dir = Path(folder_path)
     if not target_dir.exists():
-        return f"Error: Folder does not exist: {folder_path}"
+        return call.error(f"Error: Folder does not exist: {folder_path}")
     if not target_dir.is_dir():
-        return f"Error: Path is not a folder: {folder_path}"
+        return call.error(f"Error: Path is not a folder: {folder_path}")
 
     # Find the project in config
     project_config = None
@@ -310,11 +308,11 @@ def _add_folder_sync(folder_path: str, project: str, pattern: str = "**/*") -> s
             break
 
     if project_config is None:
-        return f"Error: Project '{project}' not found. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{project}' not found. Use list_projects() to see available projects.")
 
     collection = _ctx.store.get_collection(project)
     if collection is None:
-        return f"Error: Project '{project}' has no index. Run the indexer first."
+        return call.error(f"Error: Project '{project}' has no index. Run the indexer first.")
 
     import glob as glob_mod
 
@@ -330,7 +328,7 @@ def _add_folder_sync(folder_path: str, project: str, pattern: str = "**/*") -> s
         relative_dir = target_dir.relative_to(base_path)
         relative_dir_str = str(relative_dir).replace("\\", "/")
     except ValueError:
-        return f"Error: Folder must be inside the project base_path ({base_path})"
+        return call.error(f"Error: Folder must be inside the project base_path ({base_path})")
 
     # Build the full glob pattern
     full_pattern = str(target_dir / pattern)
@@ -338,7 +336,7 @@ def _add_folder_sync(folder_path: str, project: str, pattern: str = "**/*") -> s
     files = [f for f in files if Path(f).is_file()]
 
     if not files:
-        return f"Error: No files found matching pattern '{pattern}' in {folder_path}"
+        return call.error(f"Error: No files found matching pattern '{pattern}' in {folder_path}")
 
     _ctx.ensure_model_loaded()
 
@@ -389,15 +387,15 @@ def _add_folder_sync(folder_path: str, project: str, pattern: str = "**/*") -> s
         ))
         _ctx.loader.save(_ctx.config)
 
-    log_tool_call("add_folder", {"folder_path": folder_path, "project": project, "pattern": pattern}, start_time, total_chunks)
-    return (
+    return call.ok(
+        total_chunks,
         f"Folder indexed and saved to config!\n"
         f"  Folder: {relative_dir_str}\n"
         f"  Pattern: {config_pattern}\n"
         f"  Project: {project}\n"
         f"  Files indexed: {indexed_files}\n"
         f"  Chunks: {total_chunks}\n"
-        f"  Persisted: will be re-indexed automatically"
+        f"  Persisted: will be re-indexed automatically",
     )
 
 
@@ -439,20 +437,20 @@ def _add_pattern_sync(
     """Synchronous implementation of add_pattern (runs in thread pool)."""
     import glob as glob_mod
 
-    start_time = time.time()
+    call = ToolCall("add_pattern", {"project": project, "pattern": pattern, "type": type})
 
     # --- Validate inputs ---
     if not project or not project.strip():
-        return "Error: project is required."
+        return call.error("Error: project is required.")
     if not pattern or not pattern.strip():
-        return "Error: pattern is required."
+        return call.error("Error: pattern is required.")
 
     project = project.strip()
     pattern = pattern.strip()
 
     valid_types = {"source", "header", "documentation", "config"}
     if type not in valid_types:
-        return f"Error: type must be one of: {', '.join(sorted(valid_types))}. Got '{type}'."
+        return call.error(f"Error: type must be one of: {', '.join(sorted(valid_types))}. Got '{type}'.")
 
     # --- Find the project ---
     project_config = None
@@ -462,14 +460,14 @@ def _add_pattern_sync(
             break
 
     if project_config is None:
-        return f"Error: Project '{project}' not found. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{project}' not found. Use list_projects() to see available projects.")
 
     if project_config.removed:
-        return f"Error: Project '{project}' is marked as removed. Re-add it first with add_project()."
+        return call.error(f"Error: Project '{project}' is marked as removed. Re-add it first with add_project().")
 
     collection = _ctx.store.get_collection(project)
     if collection is None:
-        return f"Error: Project '{project}' has no index. Run the indexer first."
+        return call.error(f"Error: Project '{project}' has no index. Run the indexer first.")
 
     # --- Resolve files matching the pattern ---
     base_path = Path(project_config.base_path)
@@ -485,19 +483,21 @@ def _add_pattern_sync(
             desc = description or f"Manually added pattern: {pattern}"
             project_config.sources.append(SourcePattern(pattern=pattern, type=type, description=desc))
             _ctx.loader.save(_ctx.config)
-            return (
+            return call.ok(
+                0,
                 f"Pattern saved to config (no files matched yet).\n"
                 f"  Project: {project}\n"
                 f"  Pattern: {pattern}\n"
                 f"  Type: {type}\n"
                 f"  Note: No files matched '{full_pattern}' right now.\n"
-                f"        The pattern is persisted and will be picked up when files appear."
+                f"        The pattern is persisted and will be picked up when files appear.",
             )
         else:
-            return (
+            return call.ok(
+                0,
                 f"Pattern already exists in config (no files matched).\n"
                 f"  Project: {project}\n"
-                f"  Pattern: {pattern}"
+                f"  Pattern: {pattern}",
             )
 
     # --- Index matching files ---
@@ -553,13 +553,6 @@ def _add_pattern_sync(
         project_config.sources.append(SourcePattern(pattern=pattern, type=type, description=desc))
         _ctx.loader.save(_ctx.config)
 
-    log_tool_call(
-        "add_pattern",
-        {"project": project, "pattern": pattern, "type": type},
-        start_time,
-        total_chunks,
-    )
-
     lines = [
         f"Pattern indexed and saved to config!\n",
         f"  Project:  {project}",
@@ -573,7 +566,7 @@ def _add_pattern_sync(
         lines.append(f"  Skipped:  {len(skipped_files)} (binary/unreadable): {', '.join(skipped_files[:5])}")
     lines.append(f"  Persisted: will be re-indexed automatically on future runs")
 
-    return "\n".join(lines)
+    return call.ok(total_chunks, "\n".join(lines))
 
 
 def remove_project(name: str) -> str:
@@ -587,10 +580,10 @@ def remove_project(name: str) -> str:
     Returns:
         Confirmation of removal with chunk count deleted.
     """
-    start_time = time.time()
+    call = ToolCall("remove_project", {"name": name})
 
     if not name or not name.strip():
-        return "Error: name is required."
+        return call.error("Error: name is required.")
 
     name = name.strip()
 
@@ -602,7 +595,7 @@ def remove_project(name: str) -> str:
             break
 
     if project_config is None:
-        return f"Error: Project '{name}' not found. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{name}' not found. Use list_projects() to see available projects.")
 
     # Delete the ChromaDB collection
     chunks_deleted = 0
@@ -621,14 +614,13 @@ def remove_project(name: str) -> str:
     try:
         _ctx.loader.save(_ctx.config)
     except Exception as e:
-        return f"Collection deleted ({chunks_deleted} chunks) but failed to update config.yaml: {e}"
+        return call.error(f"Collection deleted ({chunks_deleted} chunks) but failed to update config.yaml: {e}")
 
-    log_tool_call("remove_project", {"name": name}, start_time, chunks_deleted)
-
-    return (
+    return call.ok(
+        chunks_deleted,
         f"Project '{name}' removed successfully.\n"
         f"  Chunks deleted: {chunks_deleted}\n"
-        f"  Config updated: marked as removed (configuration preserved)"
+        f"  Config updated: marked as removed (configuration preserved)",
     )
 
 
@@ -643,17 +635,17 @@ def clear_project_index(name: str) -> str:
     Returns:
         Confirmation with number of chunks deleted.
     """
-    start_time = time.time()
+    call = ToolCall("clear_project_index", {"name": name})
 
     if not name or not name.strip():
-        return "Error: name is required."
+        return call.error("Error: name is required.")
 
     name = name.strip()
 
     # Verify project exists in config
     project_exists = any(p.name == name for p in _ctx.config.projects)
     if not project_exists:
-        return f"Error: Project '{name}' not found. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{name}' not found. Use list_projects() to see available projects.")
 
     # Delete the ChromaDB collection
     chunks_deleted = 0
@@ -663,14 +655,13 @@ def clear_project_index(name: str) -> str:
             chunks_deleted = collection.count()
             _ctx.store.delete_collection(name)
     except Exception as e:
-        return f"Error deleting collection: {e}"
+        return call.error(f"Error deleting collection: {e}")
 
-    log_tool_call("clear_project_index", {"name": name}, start_time, chunks_deleted)
-
-    return (
+    return call.ok(
+        chunks_deleted,
         f"Index cleared for project '{name}'.\n"
         f"  Chunks deleted: {chunks_deleted}\n"
-        f"  Project remains in config.yaml (ready for re-indexing)."
+        f"  Project remains in config.yaml (ready for re-indexing).",
     )
 
 
@@ -686,12 +677,12 @@ def remove_file_from_index(file_path: str, project: str) -> str:
     Returns:
         Confirmation with number of chunks removed.
     """
-    start_time = time.time()
+    call = ToolCall("remove_file_from_index", {"file_path": file_path, "project": project})
 
     if not file_path or not file_path.strip():
-        return "Error: file_path is required."
+        return call.error("Error: file_path is required.")
     if not project or not project.strip():
-        return "Error: project is required."
+        return call.error("Error: project is required.")
 
     file_path = file_path.strip()
     project = project.strip()
@@ -699,7 +690,7 @@ def remove_file_from_index(file_path: str, project: str) -> str:
     # Get the collection
     collection = _ctx.store.get_collection(project)
     if collection is None:
-        return f"Error: Project '{project}' not found or not indexed. Use list_projects() to see available projects."
+        return call.error(f"Error: Project '{project}' not found or not indexed. Use list_projects() to see available projects.")
 
     # Find chunks matching the file path (try exact match and partial match)
     chunks_deleted = 0
@@ -724,14 +715,13 @@ def remove_file_from_index(file_path: str, project: str) -> str:
             collection.delete(ids=results["ids"])
             chunks_deleted = len(results["ids"])
     except Exception as e:
-        return f"Error removing chunks: {e}"
-
-    log_tool_call("remove_file_from_index", {"file_path": file_path, "project": project}, start_time, chunks_deleted)
+        return call.error(f"Error removing chunks: {e}")
 
     if chunks_deleted == 0:
-        return f"No chunks found for file '{file_path}' in project '{project}'."
+        return call.ok(0, f"No chunks found for file '{file_path}' in project '{project}'.")
 
-    return (
+    return call.ok(
+        chunks_deleted,
         f"Removed '{file_path}' from project '{project}' index.\n"
-        f"  Chunks deleted: {chunks_deleted}"
+        f"  Chunks deleted: {chunks_deleted}",
     )

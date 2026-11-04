@@ -27,7 +27,7 @@ sys.path.insert(0, str(_SRC_DIR))
 from rag_mcp import observability
 from rag_mcp.tools.helpers import log_tool_call
 
-REQUIRED_KEYS = {"ts", "level", "event", "pid", "message", "tool", "params", "duration_ms", "result_count"}
+REQUIRED_KEYS = {"ts", "level", "event", "pid", "message", "tool", "params", "duration_ms", "result_count", "outcome"}
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +81,8 @@ def test_one_json_line_on_stderr_with_envelope(capsys):
     assert rec["params"] == {"query": "dispense", "project": "", "top_k": 5}
     assert rec["result_count"] == 3
     assert isinstance(rec["duration_ms"], float)
+    assert rec["outcome"] == "ok"
+    assert "error" not in rec, "error field only present on outcome=error"
 
 
 def test_timestamp_is_iso8601_utc_with_milliseconds(capsys):
@@ -128,6 +130,112 @@ def test_unicode_is_written_verbatim(capsys):
     err = capsys.readouterr().err
     assert "café → résumé" in err  # ensure_ascii=False, no \\u escapes
     assert json.loads(err)["params"]["query"] == "café → résumé"
+
+
+# ---------------------------------------------------------------------------
+# outcome: ok | error
+# ---------------------------------------------------------------------------
+
+
+def test_error_outcome_sets_zero_results_error_text_and_info_level(capsys):
+    text = "Error: Project 'nope' not found. Use list_projects() to see available projects."
+    log_tool_call("search_docs", {"query": "x", "project": "nope"}, time.time(), 7, outcome="error", error=text)
+
+    rec = _stderr_json_lines(capsys)[0]
+    assert REQUIRED_KEYS <= rec.keys()
+    assert rec["outcome"] == "error"
+    assert rec["result_count"] == 0, "an error never reports results, whatever the caller passed"
+    assert rec["error"] == text
+    assert rec["level"] == "INFO", "tool errors are client-input errors; level stays INFO (D2)"
+    assert rec["message"].startswith("search_docs(query='x', project='nope') -> error in ")
+    assert rec["message"].endswith(f"ms: {text}")
+    assert list(rec)[-2:] == ["outcome", "error"], "new fields are appended after the existing ones"
+
+
+def test_error_text_is_truncated_to_500_chars_and_message_is_single_line(capsys):
+    line1 = "Error: Indexing failed for project 'p': " + "x" * 600
+    text = line1 + "\n  Config rolled back — project was not added.\n  third line"
+    log_tool_call("add_project", {"name": "p"}, time.time(), 0, outcome="error", error=text)
+
+    rec = _stderr_json_lines(capsys)[0]
+    assert rec["error"] == text[:observability.MAX_ERROR_CHARS] + "..."
+    assert len(rec["error"]) == observability.MAX_ERROR_CHARS + 3
+    assert "\n" not in rec["message"]
+    # truncation happens first, so the message's first line carries the "..." marker
+    assert rec["message"].endswith("ms: " + line1[:observability.MAX_ERROR_CHARS] + "...")
+
+
+def test_error_outcome_with_multiline_error_keeps_first_line_in_message(capsys):
+    text = "Error: first line\n  second line"
+    log_tool_call("remove_project", {"name": "p"}, time.time(), 0, outcome="error", error=text)
+    rec = _stderr_json_lines(capsys)[0]
+    assert rec["message"].endswith("ms: Error: first line")
+    assert rec["error"] == text
+
+
+def test_error_outcome_without_error_text_still_emits(capsys):
+    log_tool_call("list_files", {"project": "p"}, time.time(), 0, outcome="error")
+    rec = _stderr_json_lines(capsys)[0]
+    assert rec["outcome"] == "error" and rec["error"] == ""
+    assert rec["message"].endswith("ms: ")
+
+
+def test_unknown_outcome_falls_back_to_ok_and_never_raises(capsys):
+    log_tool_call("list_files", {"project": "p"}, time.time(), 2, outcome="cancelled", error="ignored")
+    rec = _stderr_json_lines(capsys)[0]
+    assert rec["outcome"] == "ok"
+    assert rec["result_count"] == 2
+    assert "error" not in rec
+
+
+def test_explicit_ok_outcome_matches_default(capsys):
+    log_tool_call("a", {}, time.time(), 1)
+    log_tool_call("a", {}, time.time(), 1, outcome="ok")
+    recs = _stderr_json_lines(capsys)
+    for key in ("tool", "params", "result_count", "outcome", "level"):
+        assert recs[0][key] == recs[1][key]
+    assert "error" not in recs[0] and "error" not in recs[1]
+
+
+def test_toolcall_helper_ok_and_error_return_the_text_and_emit_once(capsys):
+    from rag_mcp.tools.helpers import ToolCall
+
+    call = ToolCall("get_document", {"file_path": "a.h", "project": "p"})
+    assert call.tool == "get_document"
+    assert call.params == {"file_path": "a.h", "project": "p"}
+    assert call.start_time <= time.time()
+
+    ok_text = "Document: a.h\n---\nint x;"
+    assert call.ok(3, ok_text) is ok_text
+    err_text = "Error: project is required."
+    assert call.error(err_text) is err_text
+
+    recs = _stderr_json_lines(capsys)
+    assert len(recs) == 2, "exactly one event per ok()/error()"
+    assert [r["outcome"] for r in recs] == ["ok", "error"]
+    assert [r["result_count"] for r in recs] == [3, 0]
+    assert recs[1]["error"] == err_text
+    for r in recs:
+        assert r["tool"] == "get_document"
+        assert r["params"] == {"file_path": "a.h", "project": "p"}
+
+
+def test_toolcall_helper_measures_duration_from_construction(capsys):
+    from rag_mcp.tools.helpers import ToolCall
+
+    call = ToolCall("list_projects", {})
+    call.start_time -= 0.050  # pretend the body took 50 ms
+    call.error("Error: x")
+    rec = _stderr_json_lines(capsys)[0]
+    assert 50.0 <= rec["duration_ms"] < 5000.0
+
+
+def test_toolcall_helper_sanitizes_query_like_log_tool_call(capsys):
+    from rag_mcp.tools.helpers import ToolCall
+
+    ToolCall("search_docs", {"query": "q" * 250}).error("Error: x")
+    rec = _stderr_json_lines(capsys)[0]
+    assert rec["params"]["query"] == "q" * 100 + "..."
 
 
 # ---------------------------------------------------------------------------
@@ -259,4 +367,5 @@ def test_real_tool_call_site_emits_event(tmp_path, capsys, monkeypatch):
     assert recs[0]["tool"] == "find_variable"
     assert recs[0]["params"] == {"variable_name": "NOTE_MAX", "project": "proj"}
     assert recs[0]["result_count"] == 1
+    assert recs[0]["outcome"] == "ok"
     assert _file_json_lines(tmp_path / "events.jsonl") == recs

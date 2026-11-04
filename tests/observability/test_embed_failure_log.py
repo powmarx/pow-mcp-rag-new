@@ -237,9 +237,16 @@ def test_search_docs_error_string_unchanged_and_event_emitted(capsys, log_file, 
     out = search_mod._search_docs_sync("how does dispense work")
 
     assert out == "Error encoding query: model exploded"  # existing behaviour
-    recs = _embed_failures(_json_lines(_stderr_lines(capsys)))
+    all_recs = _json_lines(_stderr_lines(capsys))
+    recs = _embed_failures(all_recs)
     assert len(recs) == 1 and recs[0]["kind"] == "query"
-    assert _file_records(log_file) == recs
+    assert _embed_failures(_file_records(log_file)) == recs
+    # the tool's own early return is now observable too: one tool_call with outcome=error
+    tool_recs = [r for r in all_recs if r["event"] == "tool_call"]
+    assert len(tool_recs) == 1
+    assert tool_recs[0]["tool"] == "search_docs"
+    assert tool_recs[0]["outcome"] == "error"
+    assert tool_recs[0]["error"] == out
 
 
 def test_log_indexer_incremental_keeps_offset_and_emits_event(capsys, log_file):

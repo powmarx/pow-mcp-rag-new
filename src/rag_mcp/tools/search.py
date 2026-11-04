@@ -1,13 +1,11 @@
 """Search tools: semantic search, hex pattern, variable/function lookup."""
 
-import time
-
 import anyio
 
 import math
 
 from rag_mcp.tools import ToolContext
-from rag_mcp.tools.helpers import extract_snippet, log_tool_call
+from rag_mcp.tools.helpers import ToolCall, extract_snippet
 
 _ctx: ToolContext | None = None
 
@@ -43,13 +41,13 @@ async def search_docs(query: str, project: str = "", top_k: int = 5, file_type: 
 
 def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: str = "") -> str:
     """Synchronous implementation of search_docs (runs in thread pool)."""
-    start_time = time.time()
+    call = ToolCall("search_docs", {"query": query, "project": project, "top_k": top_k, "file_type": file_type})
 
     # Validate query
     if not query or not query.strip():
-        return "Error: query must not be empty."
+        return call.error("Error: query must not be empty.")
     if len(query) > 1000:
-        return "Error: query must not exceed 1000 characters."
+        return call.error("Error: query must not exceed 1000 characters.")
 
     # Clamp top_k
     top_k = min(max(1, top_k), 20)
@@ -59,7 +57,7 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
         _ctx.ensure_model_loaded()
         query_embedding = _ctx.embedding_gen.encode_query(query)
     except Exception as e:
-        return f"Error encoding query: {e}"
+        return call.error(f"Error encoding query: {e}")
 
     # When reranking is enabled, over-fetch candidates from the bi-encoder
     # vector search so the cross-encoder has a wider pool to rerank from.
@@ -73,7 +71,7 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
     if project:
         collection = _ctx.store.get_collection(project)
         if collection is None:
-            return f"Error: Project '{project}' not found. Use list_projects() to see available projects."
+            return call.error(f"Error: Project '{project}' not found. Use list_projects() to see available projects.")
         collections = [collection]
     else:
         collections_meta = _ctx.store.list_collections()
@@ -85,7 +83,7 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
                 continue
 
     if not collections:
-        return "No indexed collections found. Run 'python indexer.py' first."
+        return call.error("No indexed collections found. Run 'python indexer.py' first.")
 
     for collection in collections:
         # Build where filter
@@ -140,10 +138,8 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
 
     results = results[:top_k]
 
-    log_tool_call("search_docs", {"query": query, "project": project, "top_k": top_k, "file_type": file_type}, start_time, len(results))
-
     if not results:
-        return f"No results found for query: '{query}'"
+        return call.ok(0, f"No results found for query: '{query}'")
 
     # Format output
     output_parts = []
@@ -167,7 +163,7 @@ def _search_docs_sync(query: str, project: str = "", top_k: int = 5, file_type: 
             f"Content:\n{r['content']}\n"
         )
 
-    return "\n".join(output_parts)
+    return call.ok(len(results), "\n".join(output_parts))
 
 
 async def search_specs(query: str, project: str = "", top_k: int = 5) -> str:
@@ -237,10 +233,10 @@ async def find_function(function_name: str, project: str = "") -> str:
 
 def _find_function_sync(function_name: str, project: str = "") -> str:
     """Synchronous implementation of find_function (runs in thread pool)."""
-    start_time = time.time()
+    call = ToolCall("find_function", {"function_name": function_name, "project": project})
 
     if not function_name or not function_name.strip():
-        return "Error: function_name is required."
+        return call.error("Error: function_name is required.")
 
     results_parts = [f"Searching for function: '{function_name}'\n"]
 
@@ -291,8 +287,7 @@ def _find_function_sync(function_name: str, project: str = "") -> str:
         for fp in sorted(set(exact_matches))[:15]:
             results_parts.append(f"  {fp}")
 
-    log_tool_call("find_function", {"function_name": function_name, "project": project}, start_time, len(exact_matches))
-    return "\n".join(results_parts)
+    return call.ok(len(exact_matches), "\n".join(results_parts))
 
 
 def search_hex_pattern(pattern: str, project: str = "", top_k: int = 10) -> str:
@@ -309,10 +304,10 @@ def search_hex_pattern(pattern: str, project: str = "", top_k: int = 10) -> str:
     Returns:
         Document chunks containing the hex pattern with file and project info
     """
-    start_time = time.time()
+    call = ToolCall("search_hex_pattern", {"pattern": pattern, "project": project})
 
     if not pattern or not pattern.strip():
-        return "Error: pattern is required."
+        return call.error("Error: pattern is required.")
 
     search_term = pattern.strip().lower().replace("0x", "").replace(" ", "")
     original_pattern = pattern.strip()
@@ -321,7 +316,7 @@ def search_hex_pattern(pattern: str, project: str = "", top_k: int = 10) -> str:
     if project:
         collection = _ctx.store.get_collection(project)
         if collection is None:
-            return f"Error: Project '{project}' not found."
+            return call.error(f"Error: Project '{project}' not found.")
         collections_to_search = [(project, collection)]
     else:
         collections_meta = _ctx.store.list_collections()
@@ -336,7 +331,7 @@ def search_hex_pattern(pattern: str, project: str = "", top_k: int = 10) -> str:
                 continue
 
     if not collections_to_search:
-        return "No indexed collections found."
+        return call.error("No indexed collections found.")
 
     results = []
 
@@ -388,10 +383,9 @@ def search_hex_pattern(pattern: str, project: str = "", top_k: int = 10) -> str:
             break
 
     results = results[:top_k]
-    log_tool_call("search_hex_pattern", {"pattern": pattern, "project": project}, start_time, len(results))
 
     if not results:
-        return f"No matches found for pattern: '{original_pattern}'"
+        return call.ok(0, f"No matches found for pattern: '{original_pattern}'")
 
     output_parts = [f"Found {len(results)} matches for: '{original_pattern}'\n"]
     for i, r in enumerate(results, 1):
@@ -403,7 +397,7 @@ def search_hex_pattern(pattern: str, project: str = "", top_k: int = 10) -> str:
             f"Context:\n{r['snippet']}\n"
         )
 
-    return "\n".join(output_parts)
+    return call.ok(len(results), "\n".join(output_parts))
 
 
 def find_variable(variable_name: str, project: str = "") -> str:
@@ -418,10 +412,10 @@ def find_variable(variable_name: str, project: str = "") -> str:
     Returns:
         Files containing the variable with context snippets
     """
-    start_time = time.time()
+    call = ToolCall("find_variable", {"variable_name": variable_name, "project": project})
 
     if not variable_name or not variable_name.strip():
-        return "Error: variable_name is required."
+        return call.error("Error: variable_name is required.")
 
     name = variable_name.strip()
 
@@ -429,7 +423,7 @@ def find_variable(variable_name: str, project: str = "") -> str:
     if project:
         collection = _ctx.store.get_collection(project)
         if collection is None:
-            return f"Error: Project '{project}' not found."
+            return call.error(f"Error: Project '{project}' not found.")
         collections_to_search = [(project, collection)]
     else:
         collections_meta = _ctx.store.list_collections()
@@ -444,7 +438,7 @@ def find_variable(variable_name: str, project: str = "") -> str:
                 continue
 
     if not collections_to_search:
-        return "No indexed collections found."
+        return call.error("No indexed collections found.")
 
     results = []
     seen_files = set()
@@ -484,10 +478,8 @@ def find_variable(variable_name: str, project: str = "") -> str:
         if len(results) >= 15:
             break
 
-    log_tool_call("find_variable", {"variable_name": variable_name, "project": project}, start_time, len(results))
-
     if not results:
-        return f"No occurrences found for: '{name}'"
+        return call.ok(0, f"No occurrences found for: '{name}'")
 
     output_parts = [f"Found '{name}' in {len(results)} file(s):\n"]
     for i, r in enumerate(results, 1):
@@ -497,4 +489,4 @@ def find_variable(variable_name: str, project: str = "") -> str:
             f"Context:\n{r['snippet']}\n"
         )
 
-    return "\n".join(output_parts)
+    return call.ok(len(results), "\n".join(output_parts))

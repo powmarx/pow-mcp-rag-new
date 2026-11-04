@@ -60,6 +60,19 @@ def test_get_metrics_returns_live_snapshot_as_json(capsys):
     assert out.startswith("{\n  "), "pretty-printed for readability in the client"
 
 
+def test_get_metrics_reports_error_calls(capsys):
+    log_tool_call("get_document", {"file_path": "a.h", "project": "p"}, time.time(), 4)
+    log_tool_call("get_document", {"file_path": "", "project": "p"}, time.time(), 0, outcome="error", error="Error: file_path is required")
+
+    snap = json.loads(metrics_mod.get_metrics())
+    assert snap["tool_calls"]["total"] == 2
+    assert snap["tool_calls"]["errors"] == 1
+    gd = snap["tool_calls"]["by_tool"]["get_document"]
+    assert gd["count"] == 2
+    assert gd["error_calls"] == 1
+    assert gd["zero_result_calls"] == 0, "the error must not show up as an empty call"
+
+
 def test_get_metrics_is_not_itself_counted_or_logged(capsys, tmp_path):
     observability.configure(tmp_path / "events.jsonl")
     before = json.loads(metrics_mod.get_metrics())

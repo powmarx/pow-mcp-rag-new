@@ -33,7 +33,10 @@ Event envelope (common to all event types):
     tool          tool name, e.g. "search_docs"
     params        the parameters the tool reported (query truncated to 100 chars)
     duration_ms   wall-clock duration, one decimal
-    result_count  number of results/chunks the tool reported
+    result_count  number of results/chunks the tool reported (always 0 on error)
+    outcome       "ok" | "error" — whether the tool returned a result or an error text
+    error         only when outcome == "error": the text returned to the client,
+                  truncated to 500 chars
 
 ``embed_failure`` (level ERROR) adds — deliberately no file/project context,
 it is emitted from inside ``EmbeddingGenerator`` which knows nothing about
@@ -56,6 +59,10 @@ only when at least one record was updated; a no-op check emits nothing):
 
 Counters
 --------
+Per tool: ``count`` and duration stats cover every call; ``error_calls``
+(``outcome == "error"``) and ``zero_result_calls`` (``outcome == "ok"`` and
+``result_count == 0``) are disjoint subsets of ``count``.
+
 Every emitted event is also folded into in-process counters (``_Counters``),
 exposed by ``get_metrics_snapshot()`` (live, this process only, reset on
 restart — what the ``get_metrics`` MCP tool returns). The same counter class
@@ -176,6 +183,10 @@ def emit(event: str, message: str, level: str = "INFO", **fields: Any) -> dict[s
 # ---------------------------------------------------------------------------
 
 
+def _truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
 def _sanitize_params(params: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, value in params.items():
@@ -194,16 +205,44 @@ def _format_params(params: dict[str, Any]) -> str:
     return rest
 
 
+TOOL_CALL_OUTCOMES = ("ok", "error")
+
+
 def log_tool_call_event(
     tool: str,
     params: dict[str, Any],
     start_time: float,
     result_count: int,
+    outcome: str = "ok",
+    error: str | None = None,
 ) -> dict[str, Any]:
-    """Emit one ``tool_call`` event. ``start_time`` is a ``time.time()`` value."""
+    """Emit one ``tool_call`` event. ``start_time`` is a ``time.time()`` value.
+
+    ``outcome`` is ``"ok"`` or ``"error"``; anything else falls back to ``"ok"``
+    (emitting must never raise). On ``"error"`` the record carries
+    ``result_count=0`` and ``error`` (the text returned to the client,
+    truncated to ``MAX_ERROR_CHARS``); ``message`` keeps its first line only.
+    """
     duration_ms = round((time.time() - start_time) * 1000, 1)
     safe_params = _sanitize_params(params or {})
-    message = f"{tool}({_format_params(safe_params)}) -> {result_count} results in {duration_ms:.0f}ms"
+    if outcome not in TOOL_CALL_OUTCOMES:
+        outcome = "ok"
+    head = f"{tool}({_format_params(safe_params)})"
+    if outcome == "error":
+        error_text = _truncate(str(error or ""), MAX_ERROR_CHARS)
+        first_line = error_text.splitlines()[0] if error_text else ""
+        message = f"{head} -> error in {duration_ms:.0f}ms: {first_line}"
+        return emit(
+            "tool_call",
+            message,
+            tool=tool,
+            params=safe_params,
+            duration_ms=duration_ms,
+            result_count=0,
+            outcome="error",
+            error=error_text,
+        )
+    message = f"{head} -> {result_count} results in {duration_ms:.0f}ms"
     return emit(
         "tool_call",
         message,
@@ -211,16 +250,13 @@ def log_tool_call_event(
         params=safe_params,
         duration_ms=duration_ms,
         result_count=result_count,
+        outcome="ok",
     )
 
 
 # ---------------------------------------------------------------------------
 # Event: embed_failure
 # ---------------------------------------------------------------------------
-
-
-def _truncate(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit] + "..."
 
 
 def log_embed_failure_event(
@@ -310,13 +346,27 @@ class _Counters:
                 tool = str(record.get("tool", "?"))
                 duration = float(record.get("duration_ms") or 0.0)
                 result_count = record.get("result_count")
+                # Records written before ``outcome`` existed (and unknown
+                # values from newer writers) replay as "ok".
+                is_error = record.get("outcome") == "error"
                 t = self._tool_calls.setdefault(
-                    tool, {"count": 0, "total_duration_ms": 0.0, "max_duration_ms": 0.0, "zero_result_calls": 0}
+                    tool,
+                    {
+                        "count": 0,
+                        "total_duration_ms": 0.0,
+                        "max_duration_ms": 0.0,
+                        "error_calls": 0,
+                        "zero_result_calls": 0,
+                    },
                 )
                 t["count"] += 1
                 t["total_duration_ms"] += duration
                 t["max_duration_ms"] = max(t["max_duration_ms"], duration)
-                if result_count == 0:
+                if is_error:
+                    t["error_calls"] += 1
+                elif result_count == 0:
+                    # Only successful calls count as "zero result": an error is
+                    # not an empty answer.
                     t["zero_result_calls"] += 1
                 return True
             if event == "embed_failure":
@@ -345,12 +395,14 @@ class _Counters:
                     "total_duration_ms": round(t["total_duration_ms"], 1),
                     "avg_duration_ms": round(t["total_duration_ms"] / t["count"], 1),
                     "max_duration_ms": round(t["max_duration_ms"], 1),
+                    "error_calls": t["error_calls"],
                     "zero_result_calls": t["zero_result_calls"],
                 }
             by_collection = {c: dict(v) for c, v in sorted(self._backfills_by_collection.items())}
             return {
                 "tool_calls": {
                     "total": sum(t["count"] for t in by_tool.values()),
+                    "errors": sum(t["error_calls"] for t in by_tool.values()),
                     "by_tool": by_tool,
                 },
                 "embed_failures": {
@@ -467,12 +519,15 @@ def format_metrics_text(snapshot: dict[str, Any]) -> str:
 
     tc = snapshot["tool_calls"]
     out.append("")
-    out.append(f"Tool calls: {tc['total']}")
+    errors = tc.get("errors", 0)
+    out.append(f"Tool calls: {tc['total']}" + (f" ({errors} error{'s' if errors != 1 else ''})" if errors else ""))
     if tc["by_tool"]:
-        out.append(f"  {'tool':<24} {'calls':>6} {'avg ms':>9} {'max ms':>9} {'zero-result':>12}")
+        out.append(
+            f"  {'tool':<24} {'calls':>6} {'errors':>6} {'avg ms':>9} {'max ms':>9} {'zero-result':>12}"
+        )
         for tool, t in tc["by_tool"].items():
             out.append(
-                f"  {tool:<24} {t['count']:>6} {t['avg_duration_ms']:>9.1f} "
+                f"  {tool:<24} {t['count']:>6} {t.get('error_calls', 0):>6} {t['avg_duration_ms']:>9.1f} "
                 f"{t['max_duration_ms']:>9.1f} {t['zero_result_calls']:>12}"
             )
 
