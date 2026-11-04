@@ -68,23 +68,49 @@ Event-specific fields follow the envelope. Fields of other event types never app
 
 ### `tool_call` (level `INFO`)
 
-Emitted by each MCP tool when it reports its result (via the `log_tool_call` helper).
+Emitted **exactly once per invocation** of every MCP tool (except `get_metrics`, see below),
+whether the tool succeeded, found nothing, or returned an error text.
 
 | Field | Type | Meaning |
 |---|---|---|
 | `tool` | string | Tool name, e.g. `search_docs` |
-| `params` | object | The parameters the tool reported. `query` is truncated to 100 characters (`"..."` appended). Other values are passed through as given. |
-| `duration_ms` | float | Wall-clock time from the tool's start to the log call, one decimal |
-| `result_count` | int | Results / chunks / files the tool reported (meaning is tool-specific, e.g. hits for a search, chunks for `add_file`) |
+| `params` | object | The parameters the tool received, **as received** (before trimming or clamping — a `top_k` of `500` is logged as `500` even though the tool clamps it to 20). `query` is truncated to 100 characters (`"..."` appended). |
+| `duration_ms` | float | Wall-clock time from the tool's start to its return, one decimal |
+| `result_count` | int | Results / chunks / files the tool reported (meaning is tool-specific, e.g. hits for a search, chunks for `add_file`). Always `0` when `outcome` is `error`. |
+| `outcome` | string | `ok` — the tool returned an answer (possibly an empty one); `error` — the tool returned an error text to the client (invalid input, unknown project, ChromaDB call failed, …) |
+| `error` | string | **Only when `outcome` is `error`.** The exact text returned to the client, truncated to 500 characters (`"..."` appended). |
+
+Success:
 
 ```json
-{"ts":"2026-10-30T18:36:46.780Z","level":"INFO","event":"tool_call","pid":1282,"message":"search_logs(project='logs', severity='ERROR', top_k=20) -> 1 results in 35ms","tool":"search_logs","params":{"query":"","project":"logs","severity":"ERROR","top_k":20},"duration_ms":34.7,"result_count":1}
+{"ts":"2026-10-30T18:36:46.780Z","level":"INFO","event":"tool_call","pid":1282,"message":"search_logs(project='logs', severity='ERROR', top_k=20) -> 1 results in 35ms","tool":"search_logs","params":{"query":"","project":"logs","severity":"ERROR","top_k":20},"duration_ms":34.7,"result_count":1,"outcome":"ok"}
 ```
 
-> **Coverage note.** A tool only emits `tool_call` where it calls `log_tool_call`. Early
-> validation returns (`"Error: query must not be empty."`, `"Error: Project 'x' not found."`)
-> emit nothing, exactly as before — so `tool_calls` counts are "calls that produced a result
-> line", and there is no success/error outcome field yet.
+Error (`message` carries the first line of `error` only, so stderr stays one line per event):
+
+```json
+{"ts":"2026-10-30T18:36:51.102Z","level":"INFO","event":"tool_call","pid":1282,"message":"search_docs(query='dispense', project='nope', top_k=5, file_type='') -> error in 0ms: Error: Project 'nope' not found. Use list_projects() to see available projects.","tool":"search_docs","params":{"query":"dispense","project":"nope","top_k":5,"file_type":""},"duration_ms":0.3,"result_count":0,"outcome":"error","error":"Error: Project 'nope' not found. Use list_projects() to see available projects."}
+```
+
+What counts as `error` is "the tool answered with an error text": every `Error: ...` return, plus
+the failure texts that don't start with that prefix (`No indexed collections found.`,
+`Collection deleted ... but failed to update config.yaml`). What stays `ok` is every genuine
+answer, including empty ones — `No results found for query`, `No files found in project`,
+`Pattern saved to config (no files matched yet)`, a re-activated project, an `index_log_file`
+run that was cancelled or skipped a file (the per-file problems are in the result text; the call
+itself completed).
+
+`level` stays `INFO` for errors: nearly all of them are client-input errors (empty query, unknown
+project), and flagging those as `ERROR` would bury the genuine server-side faults that
+`embed_failure` reports. Filter on `"outcome":"error"` instead (see [Recipes](#recipes)).
+
+Nesting: `find_function`, `search_code`, `search_specs` and `compare_projects` delegate to the
+`search_docs` implementation, so one of those calls also produces one or two `search_docs`
+events. `search_specs` is logged as `search_docs` (it *is* `search_docs` with a fixed
+`file_type`).
+
+An exception that escapes a tool body (rather than being turned into an error text) still emits
+nothing — it surfaces as an MCP protocol error to the client. This is the one remaining gap.
 
 ### `embed_failure` (level `ERROR`)
 
@@ -139,10 +165,12 @@ that holds them, live in memory only, and reset when the process exits.
 
 | Section | Counter | Meaning |
 |---|---|---|
-| `tool_calls` | `total` | Number of `tool_call` events |
-| | `by_tool.<tool>.count` | Calls per tool |
-| | `by_tool.<tool>.total_duration_ms` / `avg_duration_ms` / `max_duration_ms` | Duration statistics per tool |
-| | `by_tool.<tool>.zero_result_calls` | Calls that reported `result_count == 0` — a cheap "is search returning nothing?" signal |
+| `tool_calls` | `total` | Number of `tool_call` events (every invocation, `ok` or `error`) |
+| | `errors` | Number of `tool_call` events with `outcome == "error"` |
+| | `by_tool.<tool>.count` | Calls per tool, `ok` and `error` alike |
+| | `by_tool.<tool>.total_duration_ms` / `avg_duration_ms` / `max_duration_ms` | Duration statistics per tool, over **all** calls. Note that error returns are usually sub-millisecond and pull the average down. |
+| | `by_tool.<tool>.error_calls` | Calls with `outcome == "error"` — a misbehaving client (wrong project names, empty queries) or a failing store shows up here |
+| | `by_tool.<tool>.zero_result_calls` | **Successful** calls (`outcome == "ok"`) that reported `result_count == 0` — a cheap "is search returning nothing?" signal. Errors are *not* counted here; `error_calls` and `zero_result_calls` are disjoint subsets of `count`. |
 | `embed_failures` | `total` | Number of `embed_failure` events |
 | | `by_kind` | Split `documents` / `query` |
 | | `by_error_type` | Split by exception class |
@@ -183,13 +211,15 @@ embedding failures since the server started?".
     "uptime_seconds": 812.4
   },
   "tool_calls": {
-    "total": 3,
+    "total": 4,
+    "errors": 1,
     "by_tool": {
       "search_logs": {
-        "count": 3,
-        "total_duration_ms": 31.9,
-        "avg_duration_ms": 10.6,
+        "count": 4,
+        "total_duration_ms": 32.2,
+        "avg_duration_ms": 8.1,
         "max_duration_ms": 26.1,
+        "error_calls": 1,
         "zero_result_calls": 1
       }
     }
@@ -235,12 +265,12 @@ Text report:
 ```
 $ rag-mcp get_metrics
 Event log : /tmp/obs-demo/events.jsonl
-Events    : 6 parsed, 0 skipped (malformed/unknown), 2 process(es)
+Events    : 7 parsed, 0 skipped (malformed/unknown), 2 process(es)
 Span      : 2026-10-31T22:13:31.994Z -> 2026-10-31T22:13:32.353Z
 
-Tool calls: 3
-  tool                      calls    avg ms    max ms  zero-result
-  search_logs                   3      10.6      26.1            1
+Tool calls: 4 (1 error)
+  tool                      calls errors    avg ms    max ms  zero-result
+  search_logs                   4      1       8.1      26.1            1
 
 Embed failures: 2
   by kind      : documents=1, query=1
@@ -261,8 +291,8 @@ JSON report — identical sections, `file` instead of `process`:
   "file": {
     "path": "/tmp/obs-demo/events.jsonl",
     "exists": true,
-    "lines_total": 6,
-    "lines_parsed": 6,
+    "lines_total": 7,
+    "lines_parsed": 7,
     "lines_skipped": 0,
     "first_ts": "2026-10-31T22:13:31.994Z",
     "last_ts": "2026-10-31T22:13:32.353Z",
@@ -280,6 +310,9 @@ Replay rules:
   mid-write), not a JSON object, or have an unknown `event` are **skipped and counted** in
   `lines_skipped` — never fatal, so a file from a newer version with extra event types still
   replays.
+- `tool_call` records without an `outcome` field (written by versions that predate it) replay as
+  `ok`, as do unknown `outcome` values from a newer writer — so an old file and a new binary, or
+  vice versa, still agree on `count`; only `error_calls` is `0` for the old records.
 - A missing file prints `(file not found — nothing has been logged yet)` and all-zero counters.
 - Replaying never touches the live counters of any process.
 
@@ -288,8 +321,9 @@ Replay rules:
 ## Privacy, retention, limitations
 
 - **What is persisted.** Tool parameters (`query` truncated to 100 chars, project names, file
-  paths as passed to the tool), embedding error messages (truncated to 500 chars), collection
-  names, timings. Never document content, never query embeddings, and `embed_failure` carries no
+  paths as passed to the tool), tool error texts (`error`, truncated to 500 chars — they repeat
+  the project/file names already in `params`, nothing more), embedding error messages (truncated
+  to 500 chars), collection names, timings. Never document content, never query embeddings, and `embed_failure` carries no
   file/project/query context at all. Treat the file like any other application log: it lives
   next to the index data and is not redacted.
 - **No rotation.** The file grows without bound. Truncate or rotate it externally
@@ -318,8 +352,14 @@ tac ~/.local/share/rag-mcp/observability/events.jsonl | jq -c 'select(.event=="e
 # Slowest 10 tool calls
 jq -c 'select(.event=="tool_call") | [.duration_ms,.tool,.params]' events.jsonl | sort -rn | head
 
-# Calls that returned nothing
-jq -c 'select(.event=="tool_call" and .result_count==0) | {ts,tool,params}' events.jsonl
+# Calls that returned nothing (successful but empty — errors are excluded)
+jq -c 'select(.event=="tool_call" and .outcome=="ok" and .result_count==0) | {ts,tool,params}' events.jsonl
+
+# Failed calls, newest first
+tac events.jsonl | jq -c 'select(.event=="tool_call" and .outcome=="error") | {ts,tool,error}'
+
+# Which tools fail most, and how
+jq -r 'select(.event=="tool_call" and .outcome=="error") | "\(.tool)\t\(.error)"' events.jsonl | sort | uniq -c | sort -rn | head
 
 # Which processes wrote to the file, and how many lines each
 jq -r .pid events.jsonl | sort | uniq -c

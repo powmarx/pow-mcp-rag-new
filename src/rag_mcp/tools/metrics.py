@@ -21,7 +21,8 @@ def get_metrics() -> str:
     Return live observability counters for this server process as JSON.
 
     Counts are accumulated in memory since the server started and reset on
-    restart: tool calls per tool (count, avg/max duration, zero-result calls),
+    restart: tool calls per tool (count, error calls, avg/max duration,
+    zero-result calls — errors and zero-result calls never overlap),
     embedding failures (by kind and error type) and log-epoch backfills that
     updated records. For history across restarts or indexer runs, use the
     CLI: `rag-mcp get_metrics` (replays the JSONL event log).

@@ -321,8 +321,18 @@ def _failing_indexer(ctx: ToolContext, monkeypatch, save_fails: bool = False) ->
     return ctx
 
 
-def _log_project(tmp_path: Path) -> ProjectConfig:
-    return _project(tmp_path, sources=[SourcePattern(pattern="*.log", type="log")])
+def _zero_chunk_indexer(ctx: ToolContext, monkeypatch) -> ToolContext:
+    from rag_mcp.indexing_pipeline import IndexingPipeline
+
+    monkeypatch.setattr(IndexingPipeline, "index_project", lambda self, project, **kw: 0)
+    return ctx
+
+
+def _log_project(tmp_path: Path, with_file: bool = False) -> ProjectConfig:
+    project = _project(tmp_path, sources=[SourcePattern(pattern="*.log", type="log")])
+    if with_file:
+        (Path(project.base_path) / "a.log").write_text("INF 12:00:00:000 something happened\n")
+    return project
 
 
 def _row_id(row: Row) -> str:
@@ -399,6 +409,8 @@ OK_PATHS: list[Row] = [
      lambda t, m: make_ctx(t, collection=_collection([])), "is indexed but has no chunks"),
     ("management", "_add_project_sync", "add_project", lambda t: {"name": "proj", "path": _dir(t, "d")},
      lambda t, m: make_ctx(t, projects=[_project(t, removed=True)]), "re-activated"),
+    ("management", "_add_project_sync", "add_project", lambda t: {"name": "p", "path": _src_dir(t)},
+     lambda t, m: _zero_chunk_indexer(make_ctx(t), m), "added to config but 0 chunks were indexed"),
     ("management", "_add_pattern_sync", "add_pattern", {"project": "proj", "pattern": "*.zzz"},
      lambda t, m: make_ctx(t, projects=[_project(t)], collection=_collection()), "Pattern saved to config (no files matched yet)"),
     ("management", "_add_pattern_sync", "add_pattern", {"project": "proj", "pattern": "*.zzz"},
@@ -406,6 +418,15 @@ OK_PATHS: list[Row] = [
      "Pattern already exists in config (no files matched)"),
     ("management", "remove_file_from_index", "remove_file_from_index", {"file_path": "a.h", "project": "p"},
      lambda t, m: make_ctx(t, collection=_collection([])), "No chunks found for file 'a.h'"),
+    # index_log_file: cancellation and per-file failures are reported in the result text, the call itself is ok (D1)
+    ("logs", "_index_log_file_sync", "index_log_file", {"file": "a.log", "project": "proj"},
+     lambda t, m: _with(make_ctx(t, projects=[_log_project(t, with_file=True)]),
+                        lambda c: setattr(c, "indexing_cancelled", lambda: True)),
+     "Cancelled before processing a.log"),
+    ("logs", "_index_log_file_sync", "index_log_file", {"file": "a.log", "project": "proj"},
+     lambda t, m: _with(make_ctx(t, projects=[_log_project(t, with_file=True)]),
+                        lambda c: m.setattr(logs, "_process_log_batch", MagicMock(side_effect=RuntimeError("parse boom")))),
+     "a.log: error - parse boom"),
 ]
 
 

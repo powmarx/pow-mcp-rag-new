@@ -157,8 +157,8 @@ non-ASCII characters like `→`, which crash Python's default `print()` on Windo
 
 ## `get_metrics`
 
-Replays the JSONL event log (tool calls, embedding failures, log-epoch backfills) and prints
-aggregate counters. Read-only: starts no server, loads no model, opens no ChromaDB. For the
+Replays the JSONL event log (tool calls with their `ok`/`error` outcome, embedding failures,
+log-epoch backfills) and prints aggregate counters. Read-only: starts no server, loads no model, opens no ChromaDB. For the
 **live** counters of a running server use the `get_metrics` MCP tool instead — the CLI cannot
 see another process's memory, it reads what was written to disk (which also includes
 `rag-mcp index` runs). Full details: [OBSERVABILITY.md](OBSERVABILITY.md) / `rag-mcp docs observability`.
@@ -181,12 +181,12 @@ exactly like `serve` does (`RAG_CONFIG_PATH` / `RAG_DATA_PATH` apply).
 ```
 $ rag-mcp get_metrics
 Event log : /home/me/.local/share/rag-mcp/observability/events.jsonl
-Events    : 6 parsed, 0 skipped (malformed/unknown), 2 process(es)
+Events    : 7 parsed, 0 skipped (malformed/unknown), 2 process(es)
 Span      : 2026-10-31T22:13:31.994Z -> 2026-10-31T22:13:32.353Z
 
-Tool calls: 3
-  tool                      calls    avg ms    max ms  zero-result
-  search_logs                   3      10.6      26.1            1
+Tool calls: 4 (1 error)
+  tool                      calls errors    avg ms    max ms  zero-result
+  search_logs                   4      1       8.1      26.1            1
 
 Embed failures: 2
   by kind      : documents=1, query=1
@@ -196,8 +196,11 @@ Log-epoch backfills: 1 event(s), 3 record(s) updated
   rag_logs                 1 event(s), 3 updated
 ```
 
-A missing file is reported (`file not found — nothing has been logged yet`) with zero
-counters and exit code `0`. Malformed or truncated lines are skipped and counted, never fatal.
+`errors` counts calls that returned an error text to the client; `zero-result` counts
+*successful* calls with nothing to report (the two never overlap). A missing file is reported
+(`file not found — nothing has been logged yet`) with zero counters and exit code `0`.
+Malformed or truncated lines are skipped and counted, never fatal; records from versions
+without an `outcome` field replay as successes.
 
 ---
 

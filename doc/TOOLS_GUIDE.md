@@ -356,9 +356,11 @@ path the chunk belongs to (e.g. `Section: Install > Quick Start`).
 ### 20. get_metrics — Live server counters
 
 **What it does:** Returns the server's in-process observability counters as a JSON document:
-tool calls per tool (count, average/max duration, zero-result calls), embedding failures (by
-kind and error type) and log-epoch backfills that updated records. Counts start when the server
-starts and reset on restart.
+tool calls per tool (count, error calls, average/max duration, zero-result calls), embedding
+failures (by kind and error type) and log-epoch backfills that updated records. Every tool
+invocation is counted, including the ones that answered with an `Error: ...` text — those land
+in `error_calls`, while `zero_result_calls` only counts successful calls that found nothing.
+Counts start when the server starts and reset on restart.
 
 **When to use:** Health checks from chat ("is search returning nothing?", "are embeddings
 failing?"), or before filing a bug report. For history across restarts or `rag-mcp index` runs,
@@ -368,6 +370,7 @@ use the CLI (`rag-mcp get_metrics`), which replays the JSONL event log on disk i
 - "Show me the RAG server metrics"
 - "How many embedding failures since the server started?"
 - "Which tool is slowest on average?"
+- "Are any tool calls failing?"
 
 **Parameters:** none.
 
