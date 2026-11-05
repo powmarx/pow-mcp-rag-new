@@ -1,6 +1,9 @@
 # Plan: tool-call outcome coverage
 
-Status: **plan only — nothing implemented yet.**
+Status: **Parts 1–3 implemented and reviewed** (events + counters, all 75 early returns
+routed through `ToolCall`, docs). **Part 4 (escaping exceptions) not done** — see
+`doc/OBSERVABILITY.md` → *tool_call* for the statement of that remaining gap. The sections
+below are the original plan; the "Inventory" table and decisions D1–D7 match what was built.
 
 ## Problem
 
@@ -241,7 +244,7 @@ contexts exactly like the existing `test_real_tool_call_site_emits_event`).
 2. **Reclassification rows** (4): `get_document` ×2, `list_files` ×2 → now `outcome == "error"`,
    and `zero_result_calls` for that tool stays `0` in `get_metrics_snapshot()`.
 
-3. **"Stay ok" rows** (the 11 judgement calls in the inventory's last column): e.g. `add_pattern` no-files-matched, `remove_file_from_index` 0 chunks,
+3. **"Stay ok" rows** (the 12 judgement calls in the inventory's last column, 13 rows — `index_log_file` contributes both a cancellation and a per-file-failure row): e.g. `add_pattern` no-files-matched, `remove_file_from_index` 0 chunks,
    `search_docs` no results → `outcome == "ok"`, `result_count == 0`, no `error` key.
 
 4. **Completeness guard** — `test_every_return_in_a_tool_body_goes_through_toolcall`: parse the

@@ -74,6 +74,15 @@ def test_observability_doc_explains_outcome_semantics():
     assert "without an `outcome` field" in doc and "replay as\n  `ok`" in doc
 
 
+def test_observability_doc_states_the_wrapper_tools_attribution():
+    """search_specs / search_code emit no event of their own — the doc must say so."""
+    doc = _doc()
+    assert "**Nesting.**" in doc
+    assert "**no** `search_specs` event" in doc
+    assert "**no** `search_code` event" in doc
+    assert "never contains `search_specs` or `search_code`" in doc
+
+
 def test_documented_field_lists_match_the_emitted_records(capsys, tmp_path):
     """Every field each event type actually emits is mentioned in the doc."""
     import time
@@ -155,7 +164,22 @@ def test_tools_guide_documents_get_metrics_tool():
     assert "| 20 | [`get_metrics`]" in text
     assert "### 20. get_metrics" in text
     assert "error calls" in text and "`error_calls`" in text
+    assert "`outcome` of `ok` or `error`" in text, "guide must say every other tool is logged with an outcome"
+    assert "logged under `search_docs`" in text
     assert "OBSERVABILITY.md" in text
+
+
+def test_architecture_doc_lists_the_observability_layer():
+    text = (_REPO_ROOT / "doc" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "observability.py" in text and "metrics.py" in text
+    assert "ToolCall" in text
+    assert "**Observability**" in text and "OBSERVABILITY.md" in text
+
+
+def test_plan_status_reflects_implementation():
+    text = (_REPO_ROOT / "doc" / "specifications" / "tool-call-outcome" / "plan.md").read_text(encoding="utf-8")
+    assert "nothing implemented yet" not in text
+    assert "Parts 1–3 implemented" in text and "Part 4" in text
 
 
 def test_readme_links_the_observability_guide():

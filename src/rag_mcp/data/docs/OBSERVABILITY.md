@@ -68,8 +68,11 @@ Event-specific fields follow the envelope. Fields of other event types never app
 
 ### `tool_call` (level `INFO`)
 
-Emitted **exactly once per invocation** of every MCP tool (except `get_metrics`, see below),
-whether the tool succeeded, found nothing, or returned an error text.
+Emitted **exactly once per invocation** of every MCP tool that has its own implementation —
+whether it succeeded, found nothing, or returned an error text. Three tools never appear under
+their own name: `get_metrics` (deliberately not logged, see below), and `search_specs` /
+`search_code`, which are thin wrappers over `search_docs` and are logged as `search_docs`
+(see *Nesting* below).
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -104,10 +107,20 @@ itself completed).
 project), and flagging those as `ERROR` would bury the genuine server-side faults that
 `embed_failure` reports. Filter on `"outcome":"error"` instead (see [Recipes](#recipes)).
 
-Nesting: `find_function`, `search_code`, `search_specs` and `compare_projects` delegate to the
-`search_docs` implementation, so one of those calls also produces one or two `search_docs`
-events. `search_specs` is logged as `search_docs` (it *is* `search_docs` with a fixed
-`file_type`).
+**Nesting.** Four tools delegate to the `search_docs` implementation, so a single client call
+can produce more than one event:
+
+| Client calls | Events emitted |
+|---|---|
+| `find_function` | two `search_docs` (headers, sources) + one `find_function` |
+| `compare_projects` | two `search_docs` (one per project) + one `compare_projects` |
+| `search_specs` | one `search_docs` — **no** `search_specs` event (it *is* `search_docs` with `file_type="documentation"`) |
+| `search_code` | one or two `search_docs` (headers and/or sources) — **no** `search_code` event |
+
+So `tool_calls.total` counts *implementations* invoked, not client requests, and
+`by_tool` never contains `search_specs` or `search_code`. Their failures are still fully
+visible — an invalid query through `search_code` emits `search_docs` events with
+`outcome: "error"` — just attributed to `search_docs`.
 
 An exception that escapes a tool body (rather than being turned into an error text) still emits
 nothing — it surfaces as an MCP protocol error to the client. This is the one remaining gap.

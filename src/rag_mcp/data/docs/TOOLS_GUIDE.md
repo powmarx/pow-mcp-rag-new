@@ -363,7 +363,7 @@ in `error_calls`, while `zero_result_calls` only counts successful calls that fo
 Counts start when the server starts and reset on restart.
 
 **When to use:** Health checks from chat ("is search returning nothing?", "are embeddings
-failing?"), or before filing a bug report. For history across restarts or `rag-mcp index` runs,
+failing?", "is the assistant calling tools with bad arguments?"), or before filing a bug report. For history across restarts or `rag-mcp index` runs,
 use the CLI (`rag-mcp get_metrics`), which replays the JSONL event log on disk instead.
 
 **Example prompts:**
@@ -378,6 +378,10 @@ use the CLI (`rag-mcp get_metrics`), which replays the JSONL event log on disk i
 - Returns pretty-printed JSON with `source: "live"`, `process`, `tool_calls`, `embed_failures`
   and `log_epoch_backfills` sections
 - Read-only; needs no model or index
+- Every *other* tool in this guide is logged once per call as a `tool_call` event with an
+  `outcome` of `ok` or `error` — an `Error: ...` reply (empty query, unknown project, bad path)
+  is an `error` outcome, an empty answer ("No results found") is `ok`. `search_specs` and
+  `search_code` are logged under `search_docs`, whose implementation they call.
 - Is NOT itself counted or logged as a tool call (metrics reads would inflate the numbers they
   report)
 - Event format, counter semantics and the CLI: [OBSERVABILITY.md](OBSERVABILITY.md) /

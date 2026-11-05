@@ -404,6 +404,8 @@ OK_PATHS: list[Row] = [
     ("search", "find_variable", "find_variable", {"variable_name": "X"},
      lambda t, m: make_ctx(t, collection=_collection([]), list_collections=[_meta("rag_proj")]), "No occurrences found"),
     ("documents", "list_projects", "list_projects", {}, lambda t, m: make_ctx(t), "No projects indexed yet"),
+    ("logs", "_search_logs_sync", "search_logs", {"query": "nothing", "project": "p"},
+     lambda t, m: make_ctx(t, collection=_collection([])), "Found 0 log results"),
     ("documents", "list_files", "list_files", {"project": "p"}, lambda t, m: make_ctx(t, collection=_collection([])), "No files found in project 'p'"),
     ("documents", "get_project_summary", "get_project_summary", {"project": "p"},
      lambda t, m: make_ctx(t, collection=_collection([])), "is indexed but has no chunks"),
@@ -488,6 +490,300 @@ def test_nested_search_docs_events_are_still_emitted_alongside_the_outer_tool(tm
 
 
 # ---------------------------------------------------------------------------
+# logs.py: the paths that only run when a collection / file is actually processed
+# (search_logs semantic hits + post-filter, partial collection failure;
+#  index_log_file success, no events, time window, cancellation mid-file)
+# ---------------------------------------------------------------------------
+
+
+def _log_hits(error_codes: list[str]) -> dict:
+    """collection.query() payload for the semantic path: one hit per error code."""
+    n = len(error_codes)
+    return {
+        "documents": [[f"ERR {c} dispense rejected" for c in error_codes]],
+        "metadatas": [[{"file_path": "dev.log", "project": "p", "severity": "error", "error_code": c,
+                        "timestamp_range_end": f"2026-01-01T00:00:0{i}"} for i, c in enumerate(error_codes)]],
+        "distances": [[0.1 * (i + 1) for i in range(n)]],
+    }
+
+
+def test_search_logs_semantic_hits_with_error_code_prefix_filter(tmp_path, monkeypatch, capsys):
+    col = _collection()
+    col.query.return_value = _log_hits(["88a153", "7700", "88a200"])
+    monkeypatch.setattr(logs, "_ctx", make_ctx(tmp_path, collection=col))
+
+    text = logs._search_logs_sync("dispense", project="p", error_code_pattern="88a", top_k=20)
+
+    assert text.startswith("Found 2 log result(s).")
+    assert "88a153" in text and "88a200" in text and "7700" not in text
+    # over-fetch for the post-filter: top_k * 3
+    assert col.query.call_args.kwargs["n_results"] == 60
+    recs = _events(capsys, "search_logs")
+    assert len(recs) == 1
+    assert recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 2
+    assert recs[0]["params"] == {"query": "dispense", "project": "p", "severity": "", "top_k": 20}
+
+
+def test_search_logs_partial_collection_failure_is_ok_not_error(tmp_path, monkeypatch, capsys):
+    """One collection cannot be opened, one raises on query, one answers:
+    the call succeeds with the answers it got (only an all-failed run is an error)."""
+    good = _collection(); good.query.return_value = _log_hits(["88a153"])
+    bad = _collection(); bad.query.side_effect = RuntimeError("db down")
+    ctx = make_ctx(tmp_path, list_collections=[_meta("rag_unopenable"), _meta("rag_bad"), _meta("rag_good")])
+    ctx.store.client.get_collection.side_effect = lambda name: (
+        (_ for _ in ()).throw(RuntimeError("gone")) if name == "rag_unopenable" else {"rag_bad": bad, "rag_good": good}[name]
+    )
+    monkeypatch.setattr(logs, "_ctx", ctx)
+
+    text = logs._search_logs_sync("dispense")
+
+    assert text.startswith("Found 1 log result(s).")
+    recs = _events(capsys, "search_logs")
+    assert len(recs) == 1
+    assert recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 1
+
+
+def _index_log_ctx(tmp_path, monkeypatch, batch_result=(3, 5), lines=("INF 14:30:00:000 something happened",)):
+    """Context for index_log_file with a one-file log project; the per-batch
+    pipeline is replaced so the test is about the tool's control flow and event."""
+    project = _log_project(tmp_path, with_file=True)
+    (Path(project.base_path) / "a.log").write_text("".join(ln + "\n" for ln in lines))
+    batch = MagicMock(return_value=batch_result)
+    monkeypatch.setattr(logs, "_process_log_batch", batch)
+    ctx = make_ctx(tmp_path, projects=[project])
+    monkeypatch.setattr(logs, "_ctx", ctx)
+    return ctx, batch
+
+
+def test_index_log_file_success_reports_chunks(tmp_path, monkeypatch, capsys):
+    _index_log_ctx(tmp_path, monkeypatch, batch_result=(3, 5))
+
+    text = logs._index_log_file_sync("a.log", "proj")
+
+    assert text.startswith("Log indexing complete: 3 chunks created in ")
+    assert "\u2713 a.log: 5 events \u2192 3 chunks in " in text
+    assert "Time range:" not in text
+    recs = _events(capsys, "index_log_file")
+    assert len(recs) == 1
+    assert recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 3
+    assert recs[0]["params"] == {"file": "a.log", "project": "proj", "time_from": "", "time_to": ""}
+
+
+def test_index_log_file_file_without_events_is_ok_with_zero_chunks(tmp_path, monkeypatch, capsys):
+    _index_log_ctx(tmp_path, monkeypatch, batch_result=(0, 0))
+
+    text = logs._index_log_file_sync("a.log", "proj")
+
+    assert text.startswith("Log indexing complete: 0 chunks created in ")
+    assert "\u2717 a.log: no indexable events" in text
+    recs = _events(capsys, "index_log_file")
+    assert len(recs) == 1
+    assert recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 0
+
+
+def test_index_log_file_time_window_stops_reading_past_time_to(tmp_path, monkeypatch, capsys):
+    ctx, batch = _index_log_ctx(
+        tmp_path, monkeypatch, batch_result=(2, 2),
+        lines=("INF:14:30:00:000 in window", "INF:16:00:00:000 past the window", "INF:16:00:01:000 never read"),
+    )
+
+    text = logs._index_log_file_sync("a.log", "proj", time_from="14:00:00", time_to="15:30:00")
+
+    # the fast early-stop (device format ``XXX:HH:MM:SS:mmm``) only handed the in-window line to the pipeline
+    assert batch.call_count == 1
+    assert batch.call_args.args[0] == ["INF:14:30:00:000 in window"]
+    assert batch.call_args.args[9:11] == ("14:00:00.000", "15:30:00.000")  # parsed_from, parsed_to
+    assert "Time range: 14:00:00 \u2192 15:30:00" in text
+    assert "\u2713 a.log: 2 events \u2192 2 chunks in " in text and "(time: 14:00:00 \u2192 15:30:00)" in text
+    recs = _events(capsys, "index_log_file")
+    assert len(recs) == 1
+    assert recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 2
+    assert recs[0]["params"] == {"file": "a.log", "project": "proj", "time_from": "14:00:00", "time_to": "15:30:00"}
+
+
+def test_index_log_file_cancelled_after_partial_progress(tmp_path, monkeypatch, capsys):
+    """Cancellation flagged after the file's last batch was stored: the call is
+    still ``ok`` (D1) and the summary line says what was preserved.
+
+    Note (pre-existing, not changed here): the ``break`` on cancellation skips
+    ``total_chunks += file_chunks``, so the headline and the event report 0
+    chunks even though the summary says 3 were stored.
+    """
+    ctx, _ = _index_log_ctx(tmp_path, monkeypatch, batch_result=(3, 5))
+    # checked (1) before the file, (2) before the remaining batch, (3) after it
+    ctx.indexing_cancelled = MagicMock(side_effect=[False, False, True])
+
+    text = logs._index_log_file_sync("a.log", "proj")
+
+    assert "\u26a0 a.log: cancelled after batch 0 (3 chunks stored, preserved)" in text
+    assert text.startswith("Log indexing complete: 0 chunks created in ")
+    recs = _events(capsys, "index_log_file")
+    assert len(recs) == 1
+    assert recs[0]["outcome"] == "ok"
+    assert recs[0]["result_count"] == 0
+    assert "error" not in recs[0]
+
+
+def test_search_logs_filter_only_with_device_and_event_type(tmp_path, monkeypatch, capsys):
+    col = _collection([])
+    monkeypatch.setattr(logs, "_ctx", make_ctx(tmp_path, collection=col))
+
+    text = logs._search_logs_sync(project="p", severity="ERROR", device_id="dev-1", event_type="command")
+
+    assert text.startswith("Found 0 log results.")
+    where = col.get.call_args.kwargs["where"]
+    assert {"device_id": "dev-1"} in where["$and"] and {"event_type": "command"} in where["$and"]
+    assert {"severity": "error"} in where["$and"] and {"file_type": "log"} in where["$and"]
+    assert not col.query.called, "no query text -> filter-only path uses get()"
+    recs = _events(capsys, "search_logs")
+    assert len(recs) == 1 and recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 0
+
+
+def test_index_log_file_multi_batch_file_sums_batches(tmp_path, monkeypatch, capsys):
+    """> 10k lines: one full batch inside the read loop plus the remainder after it."""
+    _, batch = _index_log_ctx(tmp_path, monkeypatch, batch_result=(2, 4), lines=[f"line {i}" for i in range(10_001)])
+
+    text = logs._index_log_file_sync("a.log", "proj")
+
+    assert batch.call_count == 2
+    assert len(batch.call_args_list[0].args[0]) == 10_000 and len(batch.call_args_list[1].args[0]) == 1
+    assert batch.call_args_list[1].args[11] == 2, "second batch starts at the chunk offset of the first"
+    assert "\u2713 a.log: 8 events \u2192 4 chunks in " in text
+    recs = _events(capsys, "index_log_file")  # free-text progress lines on stderr are ignored by _events
+    assert len(recs) == 1 and recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 4
+
+
+def test_index_log_file_cancelled_at_batch_boundary_stores_nothing_more(tmp_path, monkeypatch, capsys):
+    ctx, batch = _index_log_ctx(tmp_path, monkeypatch, batch_result=(2, 4), lines=[f"line {i}" for i in range(10_001)])
+    # (1) before the file: go; (2) at the 10k-line batch boundary: cancelled; later checks: cancelled
+    ctx.indexing_cancelled = MagicMock(side_effect=[False, True, True, True])
+
+    text = logs._index_log_file_sync("a.log", "proj")
+
+    assert batch.call_count == 0, "the full batch is not processed once cancellation is seen"
+    assert "\u26a0 a.log: cancelled after batch 0 (0 chunks stored, preserved)" in text
+    recs = _events(capsys, "index_log_file")
+    assert len(recs) == 1 and recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 0
+
+
+# --- the real per-batch pipeline (parse -> filter -> group -> embed -> upsert), mocked store/model ---
+
+_LOG_LINES = [
+    "2026-01-01T14:30:00 ERROR dispense rejected 88a153",
+    "2026-01-01T14:30:00.100 INFO retry scheduled",
+    "2026-01-01T16:00:00 INFO all good",
+]
+
+
+def _real_batch_components(filename: str = "a.log"):
+    from rag_mcp.log.parsing.config_models import LogSettings
+    from rag_mcp.log.parsing.content_transform import ContentTransform
+    from rag_mcp.log.parsing.event_grouper import EventGrouper
+    from rag_mcp.log.parsing.line_filter import LineFilter
+    from rag_mcp.log.parsing.log_parser import LogParser
+
+    settings = LogSettings()
+    parser = LogParser(
+        patterns=None, settings=settings, severity_mapping=None,
+        line_filter=LineFilter(filters=[], default_action="include"), filename=filename,
+    )
+    return parser, ContentTransform(transforms=[]), EventGrouper(settings=settings, grouping_rules=None)
+
+
+def _embedder() -> MagicMock:
+    emb = MagicMock()
+    emb.encode.side_effect = lambda texts: [[0.1, 0.2]] * len(texts)
+    return emb
+
+
+def test_process_log_batch_parses_groups_embeds_and_upserts():
+    parser, transform, grouper = _real_batch_components()
+    emb, col, source = _embedder(), MagicMock(), MagicMock(description="device logs")
+
+    chunks, events = logs._process_log_batch(
+        _LOG_LINES, parser, transform, grouper, emb, col, "a.log", source, "proj", None, None, 0,
+    )
+
+    assert (chunks, events) == (3, 3)
+    assert emb.encode.call_count == 1 and len(emb.encode.call_args.args[0]) == 3
+    assert col.upsert.call_count == 1
+    kw = col.upsert.call_args.kwargs
+    assert kw["ids"] == ["a.log::line_1", "a.log::line_2", "a.log::line_3"]  # deterministic, resumable
+    assert len(kw["embeddings"]) == len(kw["documents"]) == len(kw["metadatas"]) == 3
+    first = kw["metadatas"][0]
+    assert first["file_type"] == "log" and first["project"] == "proj" and first["file_path"] == "a.log"
+    assert first["severity"] == "error" and first["source_description"] == "device logs"
+    assert (first["line_start"], first["line_end"], first["chunk_index"]) == (1, 1, 0)
+    assert isinstance(first["ts_start_epoch"], float) and isinstance(first["ts_end_epoch"], float)
+    assert "88a153" in kw["documents"][0]
+
+
+def test_process_log_batch_time_window_drops_events_outside_it_and_offsets_chunk_index():
+    parser, transform, grouper = _real_batch_components()
+    emb, col, source = _embedder(), MagicMock(), MagicMock(description="d")
+
+    chunks, events = logs._process_log_batch(
+        _LOG_LINES, parser, transform, grouper, emb, col, "a.log", source, "proj",
+        "14:00:00.000", "15:30:00.000", 10,
+    )
+
+    assert (chunks, events) == (2, 2), "the 16:00 event is outside the window"
+    kw = col.upsert.call_args.kwargs
+    assert kw["ids"] == ["a.log::line_1", "a.log::line_2"]
+    assert [m["chunk_index"] for m in kw["metadatas"]] == [10, 11]
+
+
+def test_process_log_batch_with_nothing_parseable_stores_nothing():
+    parser, transform, grouper = _real_batch_components()
+    emb, col = _embedder(), MagicMock()
+
+    assert logs._process_log_batch(["no timestamp here", ""], parser, transform, grouper, emb, col,
+                                   "a.log", MagicMock(), "proj", None, None, 0) == (0, 0)
+    assert not emb.encode.called and not col.upsert.called
+
+
+def test_index_log_file_end_to_end_with_real_pipeline(tmp_path, monkeypatch, capsys):
+    """No batch mock: the tool drives the real parser/grouper over a real file;
+    only the embedding model and ChromaDB are mocked."""
+    project = _log_project(tmp_path, with_file=True)
+    (Path(project.base_path) / "a.log").write_text("".join(ln + "\n" for ln in _LOG_LINES))
+    ctx = make_ctx(tmp_path, projects=[project])
+    ctx.embedding_gen = _embedder()
+    col = MagicMock()
+    ctx.store.get_or_create_collection.return_value = col
+    monkeypatch.setattr(logs, "_ctx", ctx)
+
+    text = logs._index_log_file_sync("a.log", "proj", time_from="14:00:00", time_to="15:30:00")
+
+    assert text.startswith("Log indexing complete: 2 chunks created in ")
+    assert "\u2713 a.log: 2 events \u2192 2 chunks in " in text
+    assert col.upsert.call_args.kwargs["ids"] == ["a.log::line_1", "a.log::line_2"]
+    ctx.store.get_or_create_collection.assert_called_once_with("proj", "d")
+    recs = _events(capsys, "index_log_file")
+    assert len(recs) == 1
+    assert recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 2
+
+
+def test_search_specs_and_search_code_are_attributed_to_search_docs(tmp_path, monkeypatch, capsys):
+    """They are thin wrappers over the search_docs implementation and emit no
+    event of their own — documented in OBSERVABILITY.md ("Nesting")."""
+    ctx = make_ctx(tmp_path, collection=_collection([]), list_collections=[_meta("rag_proj")])
+    monkeypatch.setattr(search, "_ctx", ctx)
+
+    search._search_docs_sync("q", file_type="documentation")   # what search_specs delegates to
+    search._search_code_sync("q")                              # headers + sources
+    search._search_code_sync("", headers_only=True)            # invalid input through the wrapper
+
+    recs = [json.loads(ln) for ln in capsys.readouterr().err.splitlines() if ln.startswith("{")]
+    assert {r["tool"] for r in recs} == {"search_docs"}, "no search_specs / search_code events"
+    assert len(recs) == 4, "1 (specs) + 2 (code) + 1 (code, headers_only)"
+    assert [r["outcome"] for r in recs] == ["ok", "ok", "ok", "error"]
+    by_tool = observability.get_metrics_snapshot()["tool_calls"]["by_tool"]
+    assert set(by_tool) == {"search_docs"}
+    assert by_tool["search_docs"]["error_calls"] == 1, "failures through the wrappers stay visible"
+
+
+# ---------------------------------------------------------------------------
 # Static guard: no return path can bypass ToolCall
 # ---------------------------------------------------------------------------
 
@@ -558,7 +854,9 @@ def _is_call_ok_or_error(node: ast.AST | None) -> bool:
 
 def test_every_return_in_a_tool_body_goes_through_toolcall():
     bodies = _registered_tool_bodies()
-    assert len(bodies) == 19, sorted(bodies)  # 6 search + 5 documents + 7 management + 2 logs (-1 allow-listed below)
+    # 20 registered tools (6 search + 5 documents + 7 management + 2 logs) resolve to 19
+    # distinct bodies: search_specs and search_docs share _search_docs_sync.
+    assert len(bodies) == 19, sorted(bodies)
 
     offenders = []
     for (mod_name, fn_name), fn in bodies.items():

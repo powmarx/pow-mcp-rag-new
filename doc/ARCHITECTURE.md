@@ -44,6 +44,13 @@
    parameters to index only events within a specific time range. This makes indexing a 1-hour
    window of a 576 MB file take seconds instead of 15+ minutes.
 
+10. **Observability**: Every MCP tool call ends in exactly one structured `tool_call` JSON event
+    (stderr + `<storage.path>/observability/events.jsonl`) carrying its parameters, duration,
+    result count and an `outcome` of `ok` or `error` — validation failures and "not found"
+    replies are `error`, empty answers are `ok`. Embedding failures and log-epoch backfills emit
+    their own events. In-process counters over these events are exposed by the `get_metrics`
+    tool; the `rag-mcp get_metrics` CLI replays the JSONL file. See [OBSERVABILITY.md](OBSERVABILITY.md).
+
 ## PDF Handling
 
 PDFs are **always converted to Markdown** before indexing (never indexed as raw bytes):
@@ -158,12 +165,15 @@ pow-mcp-rag-new/
 │       ├── auto_detector.py       # Project structure auto-detection (add_project tool)
 │       ├── source_scanner.py      # Builds recursive source patterns from index_extensions
 │       ├── indexing_pipeline.py   # Orchestrates the indexing flow
+│       ├── observability.py       # Structured JSON events (tool_call with ok/error outcome,
+│       │                          #   embed_failure, log_epoch_backfill), counters, JSONL replay
 │       ├── tools/                 # MCP tool implementations (21 tools total)
 │       │   ├── search.py              # search_docs, search_specs, search_code, etc.
 │       │   ├── management.py          # add_project, add_pattern, remove_project, etc.
 │       │   ├── documents.py           # get_document, list_files, get_project_summary
 │       │   ├── logs.py                # index_log_file, search_logs
-│       │   └── helpers.py             # Shared helpers (FILE_TYPE_MAP, etc.)
+│       │   ├── metrics.py             # get_metrics (live counters; not itself logged)
+│       │   └── helpers.py             # ToolCall (one tool_call event per return path), FILE_TYPE_MAP, etc.
 │       └── log/                   # Structured log indexing
 │           ├── config_models.py       # Log-specific config dataclasses
 │           ├── severity.py            # Severity normalization
