@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -762,6 +763,52 @@ def test_index_log_file_end_to_end_with_real_pipeline(tmp_path, monkeypatch, cap
     recs = _events(capsys, "index_log_file")
     assert len(recs) == 1
     assert recs[0]["outcome"] == "ok" and recs[0]["result_count"] == 2
+
+
+def test_compare_projects_emits_nested_search_docs_and_always_zero_results(tmp_path, monkeypatch, capsys):
+    """Documented in OBSERVABILITY.md (Nesting / result_count): compare_projects reports
+    result_count 0 even when both nested searches hit."""
+    ctx = make_ctx(tmp_path, collection=_collection(["c1", "c2"]))
+    monkeypatch.setattr(search, "_ctx", ctx)
+    monkeypatch.setattr(documents, "_ctx", ctx)
+
+    text = documents._compare_projects_sync("dispense", "a", "b")
+
+    assert "PROJECT A: a" in text and "Found 2 results" in text
+    recs = [json.loads(ln) for ln in capsys.readouterr().err.splitlines() if ln.startswith("{")]
+    assert [(r["tool"], r["result_count"]) for r in recs] == [("search_docs", 2), ("search_docs", 2), ("compare_projects", 0)]
+    assert recs[-1]["outcome"] == "ok"
+    by_tool = observability.get_metrics_snapshot()["tool_calls"]["by_tool"]
+    assert by_tool["compare_projects"]["zero_result_calls"] == 1, "always lands in zero_result_calls (documented)"
+
+
+def _error_texts_without_error_prefix() -> set[str]:
+    """Leading phrase of every ``call.error(...)`` text that does not start with 'Error'."""
+    phrases = set()
+    for mod_name in _MODULES:
+        tree = ast.parse((_SRC_DIR / "rag_mcp" / "tools" / f"{mod_name}.py").read_text(encoding="utf-8"))
+        for n in ast.walk(tree):
+            if _is_call_ok_or_error(n) and n.func.attr == "error":
+                arg = n.args[0]
+                # first literal piece of a str / f-string / concatenation
+                first = arg
+                while isinstance(first, ast.BinOp):
+                    first = first.left
+                if isinstance(first, ast.JoinedStr):
+                    first = first.values[0]
+                text = first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else ""
+                if text and not text.startswith("Error"):
+                    phrases.add(re.split(r"[.:(]", text)[0].strip())
+    return phrases
+
+
+def test_every_error_text_without_error_prefix_is_named_in_the_doc():
+    """OBSERVABILITY.md lists the error texts that don't start with 'Error:' — keep it complete."""
+    phrases = _error_texts_without_error_prefix()
+    assert phrases == {"No indexed collections found", "No code or doc/spec files found in", "Collection deleted"}
+    doc = (_REPO_ROOT / "doc" / "OBSERVABILITY.md").read_text(encoding="utf-8")
+    for phrase in phrases:
+        assert phrase in doc, f"error text {phrase!r} is outcome=error but not named in OBSERVABILITY.md"
 
 
 def test_search_specs_and_search_code_are_attributed_to_search_docs(tmp_path, monkeypatch, capsys):

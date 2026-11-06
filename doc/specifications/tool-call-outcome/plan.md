@@ -213,7 +213,7 @@ Rules applied uniformly:
 | `management.clear_project_index` | 3 — empty name; not found; delete raised | — | — |
 | `management.remove_file_from_index` | 4 — empty file; empty project; not found; delete raised | — | 0 chunks matched → `ok/0` |
 | `logs._search_logs_sync` | 9 — bad severity; no criteria; query >512; pattern >32; bad time filter; start>end; project not found; no collections; every collection failed | — | — |
-| `logs._index_log_file_sync` | 7 — empty project; not found; removed; no log sources; bad time_from; bad time_to; no matching files | — | cancelled / per-file errors → `ok/<chunks stored>` (D1) |
+| `logs._index_log_file_sync` | 7 — empty project; not found; removed; no log sources; bad time_from; bad time_to; no matching files | — | cancelled / per-file errors → `ok` (D1). As built: `result_count` = chunks of *completed* files; a cancelled file's stored chunks are not summed (pre-existing `break` before `total_chunks +=`, left unchanged) |
 | **Total** | **75** | **4** | |
 
 ### 2.3 Tests for Part 2

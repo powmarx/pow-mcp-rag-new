@@ -164,8 +164,9 @@ def test_tools_guide_documents_get_metrics_tool():
     assert "| 20 | [`get_metrics`]" in text
     assert "### 20. get_metrics" in text
     assert "error calls" in text and "`error_calls`" in text
-    assert "`outcome` of `ok` or `error`" in text, "guide must say every other tool is logged with an outcome"
-    assert "logged under `search_docs`" in text
+    flat = " ".join(text.split())  # the guide wraps at 100 columns
+    assert "`outcome` of `ok` or `error`" in flat, "guide must say every other tool is logged with an outcome"
+    assert "logged under `search_docs`" in flat
     assert "OBSERVABILITY.md" in text
 
 
@@ -174,6 +175,19 @@ def test_architecture_doc_lists_the_observability_layer():
     assert "observability.py" in text and "metrics.py" in text
     assert "ToolCall" in text
     assert "**Observability**" in text and "OBSERVABILITY.md" in text
+    # get_metrics is not logged and nested tools emit more than one event: no "every call, exactly one"
+    assert "Every MCP tool call ends in exactly one" not in text
+    assert "except `get_metrics`" in text and "nested `search_docs`" in text
+
+
+def test_docs_state_the_result_count_caveats_and_stderr_mix():
+    doc = _doc()
+    assert "`compare_projects` always reports `0`" in doc
+    assert "cancelled mid-file" in doc
+    assert "only lines starting with `{` are events" in doc
+    guide = (_REPO_ROOT / "doc" / "TOOLS_GUIDE.md").read_text(encoding="utf-8")
+    assert "log their own event plus the `search_docs` events" in guide
+    assert "logged once per call" not in guide
 
 
 def test_plan_status_reflects_implementation():

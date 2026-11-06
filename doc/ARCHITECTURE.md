@@ -44,11 +44,13 @@
    parameters to index only events within a specific time range. This makes indexing a 1-hour
    window of a 576 MB file take seconds instead of 15+ minutes.
 
-10. **Observability**: Every MCP tool call ends in exactly one structured `tool_call` JSON event
-    (stderr + `<storage.path>/observability/events.jsonl`) carrying its parameters, duration,
-    result count and an `outcome` of `ok` or `error` — validation failures and "not found"
-    replies are `error`, empty answers are `ok`. Embedding failures and log-epoch backfills emit
-    their own events. In-process counters over these events are exposed by the `get_metrics`
+10. **Observability**: Every MCP tool except `get_metrics` is logged as structured `tool_call`
+    JSON events (stderr + `<storage.path>/observability/events.jsonl`) — one event per tool
+    implementation run, carrying its parameters, duration, result count and an `outcome` of
+    `ok` or `error`: validation failures and "not found" replies are `error`, empty answers are
+    `ok`. `search_specs` / `search_code` appear as `search_docs` (they call its implementation);
+    `find_function` / `compare_projects` emit their own event plus the nested `search_docs`
+    events they run. Embedding failures and log-epoch backfills emit their own event types. In-process counters over these events are exposed by the `get_metrics`
     tool; the `rag-mcp get_metrics` CLI replays the JSONL file. See [OBSERVABILITY.md](OBSERVABILITY.md).
 
 ## PDF Handling

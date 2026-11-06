@@ -19,7 +19,7 @@ Every event is written to **two sinks**:
 
 | Sink | When | Notes |
 |---|---|---|
-| **stderr** | always | MCP clients (Kiro, VS Code) capture the server's stderr; `docker logs` shows it in Docker mode. Replaces the old free-text `[tool] ...` lines. |
+| **stderr** | always | MCP clients (Kiro, VS Code) capture the server's stderr; `docker logs` shows it in Docker mode. Replaces the old free-text `[tool] ...` result lines. Other free-text diagnostics still share stderr (`[index_log_file] ...` progress, `[search_logs] Error querying collection ...`, `[startup] ...`): only lines starting with `{` are events, which is why the recipes below `grep` for `"event":`. |
 | **JSONL file** | when a path is known (see below) | Append-only, one JSON object per line. Shared by the server **and** the indexer, so a `rag-mcp index` run's embedding failures land in the same file the server writes to. |
 
 The file path is resolved once per process, highest priority first:
@@ -79,7 +79,7 @@ their own name: `get_metrics` (deliberately not logged, see below), and `search_
 | `tool` | string | Tool name, e.g. `search_docs` |
 | `params` | object | The parameters the tool received, **as received** (before trimming or clamping — a `top_k` of `500` is logged as `500` even though the tool clamps it to 20). `query` is truncated to 100 characters (`"..."` appended). |
 | `duration_ms` | float | Wall-clock time from the tool's start to its return, one decimal |
-| `result_count` | int | Results / chunks / files the tool reported (meaning is tool-specific, e.g. hits for a search, chunks for `add_file`). Always `0` when `outcome` is `error`. |
+| `result_count` | int | Results / chunks / files the tool reported (meaning is tool-specific, e.g. hits for a search, chunks for `add_file`). Always `0` when `outcome` is `error`. Two tools under-report: `compare_projects` always reports `0` (its hits are in the two nested `search_docs` events), and an `index_log_file` run that is cancelled mid-file reports only the chunks of files that *completed* — the cancelled file's stored chunks appear in the result text but not in the count. |
 | `outcome` | string | `ok` — the tool returned an answer (possibly an empty one); `error` — the tool returned an error text to the client (invalid input, unknown project, ChromaDB call failed, …) |
 | `error` | string | **Only when `outcome` is `error`.** The exact text returned to the client, truncated to 500 characters (`"..."` appended). |
 
@@ -96,8 +96,9 @@ Error (`message` carries the first line of `error` only, so stderr stays one lin
 ```
 
 What counts as `error` is "the tool answered with an error text": every `Error: ...` return, plus
-the failure texts that don't start with that prefix (`No indexed collections found.`,
-`Collection deleted ... but failed to update config.yaml`). What stays `ok` is every genuine
+the three failure texts that don't start with that prefix (`No indexed collections found.`,
+`No code or doc/spec files found in: ...` from `add_project`, and `Collection deleted ... but
+failed to update config.yaml` from `remove_project`). What stays `ok` is every genuine
 answer, including empty ones — `No results found for query`, `No files found in project`,
 `Pattern saved to config (no files matched yet)`, a re-activated project, an `index_log_file`
 run that was cancelled or skipped a file (the per-file problems are in the result text; the call
@@ -113,7 +114,7 @@ can produce more than one event:
 | Client calls | Events emitted |
 |---|---|
 | `find_function` | two `search_docs` (headers, sources) + one `find_function` |
-| `compare_projects` | two `search_docs` (one per project) + one `compare_projects` |
+| `compare_projects` | two `search_docs` (one per project) + one `compare_projects` (always `result_count: 0`) |
 | `search_specs` | one `search_docs` — **no** `search_specs` event (it *is* `search_docs` with `file_type="documentation"`) |
 | `search_code` | one or two `search_docs` (headers and/or sources) — **no** `search_code` event |
 
@@ -178,12 +179,12 @@ that holds them, live in memory only, and reset when the process exits.
 
 | Section | Counter | Meaning |
 |---|---|---|
-| `tool_calls` | `total` | Number of `tool_call` events (every invocation, `ok` or `error`) |
+| `tool_calls` | `total` | Number of `tool_call` events, `ok` or `error` (one per tool implementation run — see *Nesting* above; `get_metrics` is never counted) |
 | | `errors` | Number of `tool_call` events with `outcome == "error"` |
 | | `by_tool.<tool>.count` | Calls per tool, `ok` and `error` alike |
 | | `by_tool.<tool>.total_duration_ms` / `avg_duration_ms` / `max_duration_ms` | Duration statistics per tool, over **all** calls. Note that error returns are usually sub-millisecond and pull the average down. |
 | | `by_tool.<tool>.error_calls` | Calls with `outcome == "error"` — a misbehaving client (wrong project names, empty queries) or a failing store shows up here |
-| | `by_tool.<tool>.zero_result_calls` | **Successful** calls (`outcome == "ok"`) that reported `result_count == 0` — a cheap "is search returning nothing?" signal. Errors are *not* counted here; `error_calls` and `zero_result_calls` are disjoint subsets of `count`. |
+| | `by_tool.<tool>.zero_result_calls` | **Successful** calls (`outcome == "ok"`) that reported `result_count == 0` — a cheap "is search returning nothing?" signal. Errors are *not* counted here; `error_calls` and `zero_result_calls` are disjoint subsets of `count`. Ignore it for `compare_projects`, which always reports `0` (see `result_count` above). |
 | `embed_failures` | `total` | Number of `embed_failure` events |
 | | `by_kind` | Split `documents` / `query` |
 | | `by_error_type` | Split by exception class |

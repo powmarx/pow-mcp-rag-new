@@ -378,10 +378,11 @@ use the CLI (`rag-mcp get_metrics`), which replays the JSONL event log on disk i
 - Returns pretty-printed JSON with `source: "live"`, `process`, `tool_calls`, `embed_failures`
   and `log_epoch_backfills` sections
 - Read-only; needs no model or index
-- Every *other* tool in this guide is logged once per call as a `tool_call` event with an
-  `outcome` of `ok` or `error` — an `Error: ...` reply (empty query, unknown project, bad path)
-  is an `error` outcome, an empty answer ("No results found") is `ok`. `search_specs` and
-  `search_code` are logged under `search_docs`, whose implementation they call.
+- Every *other* tool in this guide is logged as a `tool_call` event with an `outcome` of `ok`
+  or `error` — an `Error: ...` reply (empty query, unknown project, bad path) is an `error`
+  outcome, an empty answer ("No results found") is `ok`. `search_specs` and `search_code` are
+  logged under `search_docs`, whose implementation they call; `find_function` and
+  `compare_projects` log their own event plus the `search_docs` events they run internally.
 - Is NOT itself counted or logged as a tool call (metrics reads would inflate the numbers they
   report)
 - Event format, counter semantics and the CLI: [OBSERVABILITY.md](OBSERVABILITY.md) /
